@@ -780,6 +780,15 @@
       <section><div><div class="eyebrow">Model + sharp money</div><h2>The Sharp label</h2></div>
         <p class="lede">Pinnacle is the sharpest sportsbook. For every pick we read Pinnacle's line for the same player and ask which side its prices favour at our line. The label stays current until the start, then locks on Pinnacle's closing line (marked "close").</p>
         <dl class="defs"><dt>Sharp agrees</dt><dd>Pinnacle priced our side as the likelier winner.</dd><dt>Sharp neutral</dt><dd>A coin flip at our line.</dd><dt>Sharp against</dt><dd>Pinnacle priced the other side as the likelier winner.</dd><dt>No sharp line</dt><dd>Pinnacle didn't list the player.</dd></dl></section>
+      <section><div><div class="eyebrow">A tool, not a lock</div><h2>Parlays</h2></div>
+        <p class="lede">The <a href="${F.parlays || "parlays.html"}">Parlays</a> page combines open picks from different games at one sportsbook. A parlay pays only if every leg wins, so its chance is much lower than any single pick's.</p>
+        <dl class="defs">
+        <dt>The model's parlay</dt><dd>One per book each ${PERIOD.toLowerCase()}: three legs from different Sunday games, taken from the open picks with the highest model chance, at that book's own lines and prices. Each update rebuilds it from the latest prices until the first Sunday kickoff; then it locks and never changes.</dd>
+        <dt>Its record</dt><dd>Only the locked parlay counts, at 1 unit each, in its own record on the Parlays page. It is never added to any market's record.</dd>
+        <dt>Pays</dt><dd>The legs' prices multiplied together. A book's own parlay price can differ a little.</dd>
+        <dt>Book's chance</dt><dd>The chance the parlay's price implies, bookmaker's cut included.</dd>
+        <dt>Model's chance</dt><dd>The legs' model chances multiplied. That holds for legs from different games; legs from the same game move together, so the builder allows one leg per game.</dd>
+        <dt>Builder prices</dt><dd>Every leg uses the chosen book's line and price from the last update, since a parlay is placed at one book. A leg that book doesn't list is left out.</dd></dl></section>
       ${notify()}
       <section><div><div class="eyebrow">Honesty notes</div><h2>What's on the record</h2></div><dl class="defs">
         ${MK.map((k) => `<dt>${esc(MKT(k).label)}</dt><dd>${esc(MKT(k).blurb)}</dd>`).join("")}
