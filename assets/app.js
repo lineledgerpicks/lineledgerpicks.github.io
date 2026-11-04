@@ -783,7 +783,8 @@
       ${notify()}
       <section><div><div class="eyebrow">Honesty notes</div><h2>What's on the record</h2></div><dl class="defs">
         ${MK.map((k) => `<dt>${esc(MKT(k).label)}</dt><dd>${esc(MKT(k).blurb)}</dd>`).join("")}
-        <dt>Pre-launch</dt><dd>Picks made before this site went public (${esc(D.launch)}) are shown and counted, tagged pre-launch, because their time stamps come from our private ledger.</dd></dl></section>`;
+        <dt>Pre-launch</dt><dd>Picks made before this site went public (${esc(D.launch)}) are shown and counted, tagged pre-launch, because their time stamps come from our private ledger.</dd>
+        <dt>New address (Nov 3, 2026)</dt><dd>Until Nov 3, 2026 this site was published from an earlier GitHub repository. Its full history was carried over here with every original commit time, so the "verify" links on picks posted before then point to that carried-over history. The original repository is kept, privately, as the record of when those picks first went public. Picks posted from Nov 3 on are verified here directly.</dd></dl></section>`;
   }
 
   /* ------------------------------------------------------------------ parlays: one book, different games
