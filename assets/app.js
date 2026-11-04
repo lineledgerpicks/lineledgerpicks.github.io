@@ -62,7 +62,7 @@
   // sport switcher first, then that sport's own tabs, then the pages every sport shares
   const F = SPORT.files || {};
   const sportTabs = (SPORT.markets || []).length
-    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`], ["open", F.open, "Open"], ["results", F.results, "Results"],
+    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`], ["open", F.open, "Open"], ["results", F.results, "Results"], ...(F.parlays ? [["parlays", F.parlays, "Parlays"]] : []),
        ...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).short || MKT(k).label])]
     : [["soon", href(F.home), "Overview"]];
   const keep = SPORT === SPORTS[0] ? "" : `?sport=${SPORT.key}`;
@@ -786,73 +786,149 @@
         <dt>Pre-launch</dt><dd>Picks made before this site went public (${esc(D.launch)}) are shown and counted, tagged pre-launch, because their time stamps come from our private ledger.</dd></dl></section>`;
   }
 
-  setTimeout(() => { reveal(); countUp(); }, 0);
-  const PAGES = { home, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, market: () => marketPage(pageMarket) };
-  (PAGES[page] || home)();
-
-  /* ------------------------------------------------------------------ parlay builder (different games only)
-     A tool, not a pick: the combined price, the chance the book's price implies, the model's chance (the legs' own
-     win chances multiplied - fair for legs from different games) and the model's value.  Same-game legs move
-     together, so they can't simply be multiplied: one leg per game.  The slip lives only in this browser. */
-  const PKEY = "ll-parlay", PMAX = 8;
+  /* ------------------------------------------------------------------ parlays: one book, different games
+     A tool, not a pick: what a parlay pays, the chance the book's price implies, and the model's chance (the legs'
+     own chances multiplied - fair for legs from different games; same-game legs move together, so one leg per game).
+     Every leg is priced at ONE book's line and price as of the last update (D.parlays.board), because a parlay can't
+     be split across books.  The slip lives only in this browser. */
+  const PR = D.parlays || { model: [], record: {}, board: {}, legs: 3 };
+  const BOARD = PR.board || {}, PBOOKS = ["DraftKings", "FanDuel"], PMAX = 8;
+  const PKEY = "ll-parlay", BKEY = "ll-parlay-book";
   const decOf = (a) => a > 0 ? 1 + a / 100 : 1 + 100 / -a;
   const amOf = (d) => d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1));
-  const canParlay = (p) => p && p.phase === "open" && p.win != null && p.price != null;
+  const at = (p, book) => { const q = p && BOARD[p.serial] && BOARD[p.serial][book]; return q ? { line: q[0], price: q[1], win: q[2] } : null; };
+  const canParlay = (p) => p && p.phase === "open" && BOARD[p.serial] && Object.keys(BOARD[p.serial]).length > 0;
   let legs = []; try { legs = JSON.parse(store.get(PKEY) || "[]"); } catch (e) { legs = []; }
-  const tidy = () => { legs = legs.filter((s) => canParlay(byId[s])); store.set(PKEY, JSON.stringify(legs)); };
-  let pOpen = false, pNote = "";
+  let pbook = PBOOKS.includes(store.get(BKEY)) ? store.get(BKEY) : PBOOKS[0], pNote = "";
+  const tidy = () => { legs = legs.filter((s) => canParlay(byId[s])); store.set(PKEY, JSON.stringify(legs)); store.set(BKEY, pbook); };
+  const short = (k) => esc(MKT(k) ? MKT(k).short || MKT(k).label : k);
   function parlayButton(p) {
     if (!canParlay(p)) return "";
     const on = legs.includes(p.serial);
     return `<button type="button" class="padd${on ? " on" : ""}" data-padd="${esc(p.serial)}" aria-pressed="${on}">${on ? "&#10003; In parlay" : "+ Parlay"}</button>`;
   }
-  function parlayMath(ps) {
-    const D = ps.reduce((x, p) => x * decOf(p.price), 1), q = ps.reduce((x, p) => x * p.win / 100, 1);
-    return { D, am: amOf(D), book: 100 / D, model: 100 * q, fair: q > 0 && q < 1 ? amOf(1 / q) : null, value: 100 * (q * D - 1) };
+  // the legs at one book: [{p, q}] (q = null when that book doesn't list the player)
+  const slipAt = (book) => legs.map((s) => ({ p: byId[s], q: at(byId[s], book) }));
+  function parlayMath(qs) {
+    const D2 = qs.reduce((x, q) => x * decOf(q.price), 1), m = qs.reduce((x, q) => x * q.win / 100, 1);
+    return { D: D2, am: amOf(D2), book: 100 / D2, model: 100 * m };
   }
-  function drawSlip() {
+  const stat = (k, v, cls = "", sub = "") => `<div><dt>${k}</dt><dd class="${cls}">${v}${sub ? `<small>${sub}</small>` : ""}</dd></div>`;
+  function nums(qs) {
+    if (qs.length < 2) return `<p class="ps-note">Add a leg from another game to build a parlay.</p>`;
+    const m = parlayMath(qs);
+    return `<dl class="ps-nums">${stat("Pays", odds(m.am), "", `$10 returns $${(10 * m.D).toFixed(2)}`)}${stat("Book's chance", pct(m.book, false))}${stat("Model's chance", pct(m.model, false))}</dl>`;
+  }
+  const bookSwitch = (cur, attr) => `<div class="seg pbook" role="group" aria-label="Sportsbook">${PBOOKS.map((b) =>
+    `<button type="button" ${attr}="${b}" aria-pressed="${b === cur}">${b}</button>`).join("")}</div>`;
+
+  // other pages: a small chip (center, clear of the phone's corners and home bar) that opens the Parlays page
+  function drawChip() {
     tidy();
-    let el = document.getElementById("pslip");
-    if (!el) { el = document.createElement("aside"); el.id = "pslip"; el.setAttribute("aria-label", "Parlay builder"); document.body.appendChild(el); }
     document.querySelectorAll("[data-padd]").forEach((b) => { const on = legs.includes(b.dataset.padd);
       b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); b.innerHTML = on ? "&#10003; In parlay" : "+ Parlay"; });
-    if (!legs.length) { el.hidden = true; pOpen = false; return; }
-    el.hidden = false;
-    const ps = legs.map((s) => byId[s]), m = parlayMath(ps), n = ps.length;
-    const head = `<button type="button" class="ps-bar" data-ptoggle aria-expanded="${pOpen}"><span><b>Parlay</b> &middot; ${n} leg${n === 1 ? "" : "s"}</span><span class="mono">${n > 1 ? odds(m.am) : odds(ps[0].price)}</span><i aria-hidden="true">${pOpen ? "&#9662;" : "&#9652;"}</i></button>`;
-    if (!pOpen) { el.className = "closed"; el.innerHTML = head; return; }
-    el.className = "";
-    const rows = ps.map((p) => `<li><div><b>${esc(p.player)}</b> ${p.side} ${p.line} <span class="muted">${esc(MKT(p.prop).short || MKT(p.prop).label)}</span>
-        <small>${odds(p.price)} ${esc(abbr(p.book))} &middot; model ${pct(p.win, false)}</small></div>
-        <button type="button" class="ps-x" data-premove="${esc(p.serial)}" aria-label="Remove ${esc(p.player)}">&times;</button></li>`).join("");
-    const stat = (k, v, cls = "") => `<div><dt>${k}</dt><dd class="${cls}">${v}</dd></div>`;
-    el.innerHTML = head + `<div class="ps-body"><ul>${rows}</ul>
-      ${n > 1 ? `<dl class="ps-nums">${stat("Pays", `${odds(m.am)} <small>$10 returns $${(10 * m.D).toFixed(2)}</small>`)}
-        ${stat("Book's chance", pct(m.book, false))}${stat("Model's chance", pct(m.model, false))}
-        ${stat("Model's fair odds", m.fair == null ? "&ndash;" : odds(m.fair))}${stat("Model value", pct(m.value), tone(m.value))}</dl>`
-        : `<p class="ps-note">Add a leg from another game to build a parlay.</p>`}
-      ${pNote ? `<p class="ps-note warn">${pNote}</p>` : ""}
-      <p class="ps-fine">Legs from different games, priced at each pick's listed price (a book's own parlay price can differ a little). Model chance = the legs' win chances multiplied.</p>
-      <div class="ps-act"><button type="button" class="ps-clear" data-pclear>Clear</button></div></div>`;
+    if (page === "parlays") drawBuilder();
+    let el = $("pchip");
+    if (!legs.length && !pNote) { if (el) el.hidden = true; return; }
+    if (!el) { el = document.createElement("a"); el.id = "pchip"; document.body.appendChild(el); }
+    el.hidden = false; el.href = page === "parlays" ? "#pbuild-s" : F.parlays || "parlays.html";   // on the page itself: back up to the slip
+    const qs = slipAt(pbook).map((x) => x.q).filter(Boolean);
+    el.innerHTML = pNote ? `<span class="pc-note">${pNote}</span>`
+      : `<b>Parlay</b><span>${legs.length} leg${legs.length === 1 ? "" : "s"} &middot; ${esc(abbr(pbook))}</span>${qs.length > 1 ? `<span class="mono">${odds(parlayMath(qs).am)}</span>` : ""}<i aria-hidden="true">&rarr;</i>`;
+    if (pNote) setTimeout(() => { pNote = ""; drawChip(); }, 3800);
+  }
+
+  // the Parlays page: the slip at the chosen book, then every open pick that book lists, by game
+  function drawBuilder() {
+    const box = $("pbuild");
+    if (!box) return;
+    const items = slipAt(pbook), ok = items.filter((x) => x.q), missing = items.filter((x) => !x.q);
+    const leg = ({ p, q }) => `<li class="${q ? "" : "off"}"><div><b>${esc(p.player)}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span>
+        <small>${q ? `${odds(q.price)} &middot; model ${pct(q.win, false)}` : `not listed at ${esc(pbook)} - not counted`}</small></div>
+        <button type="button" class="ps-x" data-premove="${esc(p.serial)}" aria-label="Remove ${esc(p.player)}">&times;</button></li>`;
+    const open = openNow.filter((p) => p.phase === "open" && canParlay(p));
+    const inGames = new Set(legs.map((s) => byId[s] && byId[s].game_id));
+    const games = gamesOf(open);
+    box.innerHTML = `<div class="pb-grid">
+      <div class="pb-slip"><div class="pb-h"><h3>Your parlay</h3>${bookSwitch(pbook, "data-pbook")}</div>
+        ${items.length ? `<ul class="ps-legs">${items.map(leg).join("")}</ul>` : `<p class="ps-note">Tap a pick to add it. One leg per game.</p>`}
+        ${missing.length ? `<p class="ps-note warn">${missing.length === 1 ? "One leg isn't" : missing.length + " legs aren't"} listed at ${esc(pbook)}. A parlay is placed at one book, so ${missing.length === 1 ? "it's" : "they're"} left out of the numbers.</p>` : ""}
+        ${pNote ? `<p class="ps-note warn">${pNote}</p>` : ""}
+        ${nums(ok.map((x) => x.q))}
+        ${items.length ? `<div class="ps-act"><button type="button" class="ps-clear" data-pclear>Clear</button></div>` : ""}</div>
+      <div class="pb-pool">${games.length ? games.map((g) => `<div class="pb-game"><div class="pb-gh"><span class="gteams">${tm(g.away)}<i class="at">@</i>${tm(g.home)}</span><span class="mono muted">${when(g.kick_utc, g.kick)}</span></div>
+        ${g.picks.map((p) => { const q = at(p, pbook), on = legs.includes(p.serial), blocked = !on && inGames.has(p.game_id);
+          return `<button type="button" class="pb-pick${on ? " on" : ""}" data-padd="${esc(p.serial)}" aria-pressed="${on}"${q ? "" : " disabled"}${blocked ? ' data-blocked="1"' : ""}>
+            <span><b>${esc(p.player)}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span></span>
+            <span class="mono">${q ? `${odds(q.price)}<small>model ${pct(q.win, false)}</small>` : `<small>not at ${esc(abbr(pbook))}</small>`}</span></button>`; }).join("")}</div>`).join("")
+        : `<div class="empty">No open picks to build with right now. New ones appear as the books post lines.</div>`}</div></div>`;
+  }
+
+  function addLeg(s) {
+    const p = byId[s];
+    pNote = "";
+    if (legs.includes(s)) legs = legs.filter((x) => x !== s);
+    else if (legs.some((x) => byId[x] && byId[x].game_id === p.game_id)) pNote = `One leg per game: ${esc(p.player)}'s game is already in your parlay.`;
+    else if (legs.length >= PMAX) pNote = `Up to ${PMAX} legs.`;
+    else legs.push(s);
   }
   document.addEventListener("click", (e) => {
     const add = e.target.closest("[data-padd]");
-    if (add) {
-      const s = add.dataset.padd, p = byId[s];
-      pNote = "";
-      if (legs.includes(s)) legs = legs.filter((x) => x !== s);
-      else if (legs.some((x) => byId[x] && byId[x].game_id === p.game_id)) pNote = `One leg per game: ${esc(p.player)} plays in a game already in your parlay, and legs from the same game move together, so their chances can't simply be multiplied.`;
-      else if (legs.length >= PMAX) pNote = `Up to ${PMAX} legs.`;
-      else legs.push(s);
-      pOpen = pOpen || legs.length > 1 || !!pNote;
-      drawSlip(); return;
-    }
-    if (e.target.closest("[data-ptoggle]")) { pOpen = !pOpen; pNote = ""; drawSlip(); return; }
+    if (add) { addLeg(add.dataset.padd); drawChip(); return; }
+    const bk = e.target.closest("[data-pbook]");
+    if (bk) { pbook = bk.dataset.pbook; pNote = ""; drawChip(); return; }
     const rm = e.target.closest("[data-premove]");
-    if (rm) { legs = legs.filter((x) => x !== rm.dataset.premove); pNote = ""; drawSlip(); return; }
-    if (e.target.closest("[data-pclear]")) { legs = []; pNote = ""; drawSlip(); }
+    if (rm) { legs = legs.filter((x) => x !== rm.dataset.premove); pNote = ""; drawChip(); return; }
+    if (e.target.closest("[data-pclear]")) { legs = []; pNote = ""; drawChip(); return; }
+    const ld = e.target.closest("[data-pload]");
+    if (ld) { const x = PR.model[Number(ld.dataset.pload)]; pbook = x.book; legs = x.legs.map((l) => l.serial).filter((s) => canParlay(byId[s])); pNote = ""; drawChip();
+      const box = $("pbuild"); if (box) box.scrollIntoView({ behavior: "smooth", block: "start" }); }
   });
 
-  setInterval(() => { if (legs.length) drawSlip(); }, 30000);               // a leg whose game started drops out
-  drawSlip();
+  // one model parlay: its legs, the numbers, and where it stands (building, locked, settled)
+  const RES = { W: "&#10003;", L: "&#10007;", P: "P", VOID: "void" };
+  function modelCard(x) {
+    const i = PR.model.indexOf(x);
+    const state = x.result ? `<span class="pill res-${x.result}">${x.result === "W" ? `Won ${num(x.units, 2, true)}u` : x.result === "L" ? "Lost -1u" : "Push"}</span>`
+      : x.locked ? `<span class="pill">Locked ${when(x.lock_utc, x.lock)}</span>`
+      : `<span class="pill building">Building &middot; locks ${when(x.lock_utc, x.lock)}</span>`;
+    if (!x.legs.length) return `<article class="pm-card"><header><span class="pm-book">${esc(x.book)}</span>${x.locked ? `<span class="pill">No parlay</span>` : state}</header>
+      <p class="ps-note">${x.locked ? `Fewer than ${PR.legs} Sunday games had a pick at ${esc(x.book)} at the lock, so there was no parlay this ${PERIOD.toLowerCase()}.` : `Not enough Sunday picks at ${esc(x.book)} yet. It fills in as lines are posted.`}</p></article>`;
+    const canLoad = !x.locked && x.legs.every((l) => canParlay(byId[l.serial]));
+    return `<article class="pm-card${x.result ? " res-" + x.result : ""}"><header><span class="pm-book">${esc(x.book)}</span>${state}</header>
+      <ol class="pm-legs">${x.legs.map((l) => `<li><span class="pm-r ${l.result || ""}">${l.result ? RES[l.result] : ""}</span><a href="${byId[l.serial] ? pageOf(byId[l.serial]) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(l.player)}</b> ${l.side} ${l.line}</a>
+        <span class="muted">${short(l.prop)}</span><span class="mono">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : `<small>model ${pct(l.win, false)}</small>`}</span></li>`).join("")}</ol>
+      <dl class="ps-nums">${stat("Pays", odds(x.american))}${stat("Book's chance", pct(x.book_chance, false))}${stat("Model's chance", pct(x.model_chance, false))}</dl>
+      <footer><span class="muted">${x.locked ? `Stamped at the lock, ${when(x.lock_utc, x.lock)}` : `Last rebuilt ${esc(x.built || "")} ET`}</span>${canLoad ? `<button type="button" class="ps-clear" data-pload="${i}">Open in builder</button>` : ""}</footer></article>`;
+  }
+
+  function parlaysPage() {
+    hero(`Parlay tools &middot; ${D.season}`, "Parlays", "Build a parlay from open picks in different games, at one sportsbook, and see what it pays, the chance the book's price implies, and the model's chance. Or start from the model's own parlay for each book.");
+    const weeks = [...new Set(PR.model.map((x) => `${x.season}-${x.week}`))];
+    const cur = weeks.length ? weeks[weeks.length - 1] : null;
+    const now = cur ? PR.model.filter((x) => `${x.season}-${x.week}` === cur && !(x.locked && x.result)) : [];
+    const past = PR.model.filter((x) => x.locked && x.legs.length && !now.includes(x)).slice().reverse();
+    const rec = PR.record || {};
+    const recRow = (label, r) => `<tr><td>${esc(label)}</td><td class="num">${r.n || 0}</td><td class="num">${r.n ? `${r.W}-${r.L}${r.P ? "-" + r.P : ""}` : "&ndash;"}</td><td class="num ${tone(r.units)}">${r.n ? num(r.units, 2, true) + "u" : "&ndash;"}</td><td class="num opt ${tone(r.roi)}">${pct(r.roi)}</td></tr>`;
+    $("app").innerHTML = `
+      ${now.length ? `<section><div class="head"><div><div class="eyebrow">The model's parlays &middot; ${PERIOD} ${cur.split("-")[1]}</div><h2>One per book</h2></div></div>
+        <p class="lede">Three legs from different Sunday games, picked from the open picks by the model's chance, at one book's lines and prices. They update as prices move, then lock at the first Sunday kickoff. Only the locked parlay counts in the record.</p>
+        <div class="pm-grid">${now.map(modelCard).join("")}</div></section>` : ""}
+      <section id="pbuild-s"><div class="head"><div><div class="eyebrow">Build your own${PR.board_at ? ` &middot; prices as of ${esc(PR.board_at)} ET` : ""}</div><h2>Parlay builder</h2></div></div>
+        <div id="pbuild"></div>
+        <p class="ps-fine">Each leg uses the chosen book's own line and price from the last update; the book's price may have moved since, and a book's parlay price can differ a little from the legs multiplied. Book's chance = what the parlay's price implies. Model's chance = the legs' chances multiplied, which holds for legs from different games. One leg per game: legs from the same game move together.</p></section>
+      <section><div class="head"><div><div class="eyebrow">Graded at 1u each, kept apart from every other record</div><h2>Model parlay record</h2></div></div>
+        ${rec.all && rec.all.n ? `<div class="tablebox"><table><thead><tr><th>Book</th><th class="num">Parlays</th><th class="num">W-L-P</th><th class="num">Units</th><th class="num opt">ROI</th></tr></thead><tbody>
+          ${recRow("All", rec.all)}${PBOOKS.filter((b) => rec[b]).map((b) => recRow(b, rec[b])).join("")}</tbody></table></div>`
+          : `<div class="empty">No model parlay has been graded yet. The first ones lock at this week's first Sunday kickoff.</div>`}
+        ${past.length ? `<div class="pm-grid">${past.map(modelCard).join("")}</div>` : ""}</section>`;
+    redraw = () => { drawBuilder(); afterDraw(); };
+    drawChip();
+  }
+
+  setTimeout(() => { reveal(); countUp(); }, 0);
+  const PAGES = { home, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
+  (PAGES[page] || home)();
+  setInterval(() => { if (legs.length && syncPhases()) drawChip(); }, 30000);   // a leg whose game started drops out
+  drawChip();
 })();
