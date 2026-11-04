@@ -222,6 +222,7 @@
 
   /* ------------------------------------------------------------------ status of a pick: open / live / grading / final */
   function status(p, short) {
+    if (p.phase === "final" && p.void_reason) return `<span class="pill res-VOID" title="Voided: ${esc(p.void_reason)}">Voided</span>`;
     if (p.phase === "final") return `<span class="pill res-${p.result}">${SEAL[p.result] || p.result}</span>`;
     if (p.phase === "live") return p.game_state === "Awaiting stats" ? `<span class="pill grading">Final &middot; grading</span>` : `<span class="pill live"><i></i>Live</span>`;
     return p.kick_utc ? `<span class="pill open"><span class="countdown" data-kick="${p.kick_utc}"${short ? ' data-short="1"' : ""}>${esc(p.kick)}</span></span>` : `<span class="pill open">Open</span>`;
@@ -315,7 +316,7 @@
     const won = p.result === "W" ? "up" : p.result === "L" ? "down" : "";
     const final = p.result && p.result !== "VOID" && p.actual != null
       ? `<div class="final ${won}">Final <b>${p.actual} ${P.unit}</b> &middot; ${p.margin ? `${Math.abs(p.margin).toFixed(1)} ${p.margin > 0 ? "over" : "under"} the line` : "right on the line"}</div>`
-      : p.result === "VOID" ? `<div class="final">Didn't play &middot; bet refunded</div>` : "";
+      : p.result === "VOID" ? `<div class="final">${p.void_reason ? `Voided &middot; ${esc(p.void_reason)}` : "Didn't play &middot; bet refunded"}</div>` : "";
     return `<article class="ticket${p.result ? " graded" : ""}" id="${esc(p.serial)}" style="${band(p)}">
       <div class="t-top">
         <div class="t-meta"><span class="t-game">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></span>${sharpChip(p.sharp, p.sharp_close)}</div>
@@ -329,7 +330,7 @@
       ${details(p, P)}
       <div class="stub">
         <div><span class="serial">No. ${esc(p.serial)}</span><span class="when">Stamped ${when(p.stamped_utc, p.stamped)}${p.verify ? ` &middot; <a class="verify" href="${esc(p.verify)}" target="_blank" rel="noopener noreferrer" title="The public commit that first posted this pick: ${when(p.posted_utc, p.posted_at)}${p.posted_before ? ", before the start" : ""}">verify &nearr;</a>` : ""}</span></div>
-        <div class="stub-r">${p.pre ? `<span class="chip pre">pre-launch</span>` : p.paper ? `<span class="chip paper">paper</span>` : ""}${betButton(p)}<button type="button" class="share" data-serial="${esc(p.serial)}" aria-label="Share this pick">Share</button>${barcode(p.serial)}</div>
+        <div class="stub-r">${p.pre ? `<span class="chip pre">pre-launch</span>` : p.paper ? `<span class="chip paper">paper</span>` : ""}${betButton(p)}${parlayButton(p)}<button type="button" class="share" data-serial="${esc(p.serial)}" aria-label="Share this pick">Share</button>${barcode(p.serial)}</div>
       </div>
     </article>`;
   }
@@ -788,4 +789,70 @@
   setTimeout(() => { reveal(); countUp(); }, 0);
   const PAGES = { home, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, market: () => marketPage(pageMarket) };
   (PAGES[page] || home)();
+
+  /* ------------------------------------------------------------------ parlay builder (different games only)
+     A tool, not a pick: the combined price, the chance the book's price implies, the model's chance (the legs' own
+     win chances multiplied - fair for legs from different games) and the model's value.  Same-game legs move
+     together, so they can't simply be multiplied: one leg per game.  The slip lives only in this browser. */
+  const PKEY = "ll-parlay", PMAX = 8;
+  const decOf = (a) => a > 0 ? 1 + a / 100 : 1 + 100 / -a;
+  const amOf = (d) => d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1));
+  const canParlay = (p) => p && p.phase === "open" && p.win != null && p.price != null;
+  let legs = []; try { legs = JSON.parse(store.get(PKEY) || "[]"); } catch (e) { legs = []; }
+  const tidy = () => { legs = legs.filter((s) => canParlay(byId[s])); store.set(PKEY, JSON.stringify(legs)); };
+  let pOpen = false, pNote = "";
+  function parlayButton(p) {
+    if (!canParlay(p)) return "";
+    const on = legs.includes(p.serial);
+    return `<button type="button" class="padd${on ? " on" : ""}" data-padd="${esc(p.serial)}" aria-pressed="${on}">${on ? "&#10003; In parlay" : "+ Parlay"}</button>`;
+  }
+  function parlayMath(ps) {
+    const D = ps.reduce((x, p) => x * decOf(p.price), 1), q = ps.reduce((x, p) => x * p.win / 100, 1);
+    return { D, am: amOf(D), book: 100 / D, model: 100 * q, fair: q > 0 && q < 1 ? amOf(1 / q) : null, value: 100 * (q * D - 1) };
+  }
+  function drawSlip() {
+    tidy();
+    let el = document.getElementById("pslip");
+    if (!el) { el = document.createElement("aside"); el.id = "pslip"; el.setAttribute("aria-label", "Parlay builder"); document.body.appendChild(el); }
+    document.querySelectorAll("[data-padd]").forEach((b) => { const on = legs.includes(b.dataset.padd);
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); b.innerHTML = on ? "&#10003; In parlay" : "+ Parlay"; });
+    if (!legs.length) { el.hidden = true; pOpen = false; return; }
+    el.hidden = false;
+    const ps = legs.map((s) => byId[s]), m = parlayMath(ps), n = ps.length;
+    const head = `<button type="button" class="ps-bar" data-ptoggle aria-expanded="${pOpen}"><span><b>Parlay</b> &middot; ${n} leg${n === 1 ? "" : "s"}</span><span class="mono">${n > 1 ? odds(m.am) : odds(ps[0].price)}</span><i aria-hidden="true">${pOpen ? "&#9662;" : "&#9652;"}</i></button>`;
+    if (!pOpen) { el.className = "closed"; el.innerHTML = head; return; }
+    el.className = "";
+    const rows = ps.map((p) => `<li><div><b>${esc(p.player)}</b> ${p.side} ${p.line} <span class="muted">${esc(MKT(p.prop).short || MKT(p.prop).label)}</span>
+        <small>${odds(p.price)} ${esc(abbr(p.book))} &middot; model ${pct(p.win, false)}</small></div>
+        <button type="button" class="ps-x" data-premove="${esc(p.serial)}" aria-label="Remove ${esc(p.player)}">&times;</button></li>`).join("");
+    const stat = (k, v, cls = "") => `<div><dt>${k}</dt><dd class="${cls}">${v}</dd></div>`;
+    el.innerHTML = head + `<div class="ps-body"><ul>${rows}</ul>
+      ${n > 1 ? `<dl class="ps-nums">${stat("Pays", `${odds(m.am)} <small>$10 returns $${(10 * m.D).toFixed(2)}</small>`)}
+        ${stat("Book's chance", pct(m.book, false))}${stat("Model's chance", pct(m.model, false))}
+        ${stat("Model's fair odds", m.fair == null ? "&ndash;" : odds(m.fair))}${stat("Model value", pct(m.value), tone(m.value))}</dl>`
+        : `<p class="ps-note">Add a leg from another game to build a parlay.</p>`}
+      ${pNote ? `<p class="ps-note warn">${pNote}</p>` : ""}
+      <p class="ps-fine">Legs from different games, priced at each pick's listed price (a book's own parlay price can differ a little). Model chance = the legs' win chances multiplied.</p>
+      <div class="ps-act"><button type="button" class="ps-clear" data-pclear>Clear</button></div></div>`;
+  }
+  document.addEventListener("click", (e) => {
+    const add = e.target.closest("[data-padd]");
+    if (add) {
+      const s = add.dataset.padd, p = byId[s];
+      pNote = "";
+      if (legs.includes(s)) legs = legs.filter((x) => x !== s);
+      else if (legs.some((x) => byId[x] && byId[x].game_id === p.game_id)) pNote = `One leg per game: ${esc(p.player)} plays in a game already in your parlay, and legs from the same game move together, so their chances can't simply be multiplied.`;
+      else if (legs.length >= PMAX) pNote = `Up to ${PMAX} legs.`;
+      else legs.push(s);
+      pOpen = pOpen || legs.length > 1 || !!pNote;
+      drawSlip(); return;
+    }
+    if (e.target.closest("[data-ptoggle]")) { pOpen = !pOpen; pNote = ""; drawSlip(); return; }
+    const rm = e.target.closest("[data-premove]");
+    if (rm) { legs = legs.filter((x) => x !== rm.dataset.premove); pNote = ""; drawSlip(); return; }
+    if (e.target.closest("[data-pclear]")) { legs = []; pNote = ""; drawSlip(); }
+  });
+
+  setInterval(() => { if (legs.length) drawSlip(); }, 30000);               // a leg whose game started drops out
+  drawSlip();
 })();
