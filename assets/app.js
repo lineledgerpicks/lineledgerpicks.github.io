@@ -511,11 +511,14 @@
     const paid = (p) => Math.round((p.pl || 0) * 1000), clear = (p) => (p.side === "OVER" ? p.actual - p.line : p.line - p.actual) / Math.sqrt(Math.abs(p.line));
     const better = (a, b) => paid(b) > paid(a) || (paid(b) === paid(a) && clear(b) > clear(a));
     const wins = ps.filter((p) => p.result === "W" && p.actual != null && p.line);
-    return { key, season, w, n: ps.length, W: count("W"), L: count("L"), P: count("P"),
-      units: ps.reduce((s, p) => s + (p.pl || 0), 0), sized: ps.reduce((s, p) => s + (p.pl_u || 0), 0),
-      risked: ps.reduce((s, p) => s + (p.pl_u != null ? p.units || 0 : 0), 0),
-      beat: beats.length ? (100 * beats.filter((p) => p.beat).length) / beats.length : null,
-      graded: [...ps].filter((p) => p.pl_u != null).sort((a, b) => (a.kick_utc || "").localeCompare(b.kick_utc || "") || (a.serial < b.serial ? -1 : 1)),
+    // each market on its own: record, units, ROI, beat the close, running line (markets are never added together)
+    const stats = (g, k) => { const c = (r) => g.filter((p) => p.result === r).length, b = g.filter((p) => p.beat != null);
+      return { k, key: `${key}-${k}`, n: g.length, W: c("W"), L: c("L"), P: c("P"),
+        units: g.reduce((s, p) => s + (p.pl || 0), 0), sized: g.reduce((s, p) => s + (p.pl_u || 0), 0),
+        risked: g.reduce((s, p) => s + (p.pl_u != null ? p.units || 0 : 0), 0),
+        beat: b.length ? (100 * b.filter((p) => p.beat).length) / b.length : null,
+        graded: [...g].filter((p) => p.pl_u != null).sort((a, b2) => (a.kick_utc || "").localeCompare(b2.kick_utc || "") || (a.serial < b2.serial ? -1 : 1)) }; };
+    return { key, season, w, n: ps.length, markets: MK.filter((k) => ps.some((p) => p.prop === k)).map((k) => stats(ps.filter((p) => p.prop === k), k)),
       best: wins.length ? wins.reduce((a, b) => (better(a, b) ? b : a)) : null };
   }
   // the week's running units, pick by pick in kickoff order (each at its ticket size): one line, a soft fade under
@@ -535,19 +538,37 @@
         <line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" class="zero" vector-effect="non-scaling-stroke"/>
         <path d="${line}" class="ln" vector-effect="non-scaling-stroke"/><g class="hit">${hits}</g></svg></figure>`;
   }
+  // one market's week: the units it made (big), its own line, then three quiet numbers - never added to the others
+  function recapMarket(m) {
+    const P = MKT(m.k), rec = `${m.W}-${m.L}${m.P ? "-" + m.P : ""}`, dec = m.W + m.L;
+    const roi = m.risked ? 100 * m.sized / m.risked : null, cls = m.sized > 0 ? "up" : m.sized < 0 ? "down" : "";
+    const beatCls = m.beat == null || m.beat === 50 ? "" : m.beat > 50 ? "up" : "down";
+    return `<section class="rcx-mkt ${cls}">
+      <header><span class="rcx-name">${esc(P.label)}</span><span class="rcx-rec" title="Record (W-L)">${rec}</span></header>
+      <div class="rcx-units"><b class="${cls}">${num(m.sized, 2, true)}<small>u</small></b>${roi != null ? `<span class="${cls}">${pct(roi)} ROI</span>` : ""}</div>
+      ${recapCurve(m)}
+      <dl class="rcx-stats">
+        <div><dt>Win rate</dt><dd>${dec ? Math.round(100 * m.W / dec) + "%" : "&ndash;"}</dd></div>
+        <div><dt>Beat close</dt><dd class="${beatCls}">${m.beat == null ? "&ndash;" : m.beat.toFixed(0) + "%"}</dd></div>
+        <div><dt>1u each</dt><dd class="${tone(m.units)}">${num(m.units, 2, true)}u</dd></div>
+      </dl></section>`;
+  }
   function recapCard(r) {
-    const rec = `${r.W}-${r.L}${r.P ? "-" + r.P : ""}`;
-    const beatTone = r.beat == null || r.beat === 50 ? "" : r.beat > 50 ? "up" : "down";
-    const beat = r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%";
-    const text = `Line Ledger, ${PERIOD} ${r.w}: ${rec}, ${num(r.sized, 2, true)}u${r.beat != null ? `, beat the close ${r.beat.toFixed(0)}%` : ""}`;
-    return `<article class="recap" id="recap-${r.key}"><div class="rc-h"><div class="eyebrow">${PERIOD} ${r.w} in review &middot; ${r.season}</div>
-        <span class="pill grading">All ${r.n} graded</span></div>
-      <div class="rc-big"><div><b>${rec}</b><small>Record</small></div><div><b class="${tone(r.sized)}">${num(r.sized, 2, true)}u</b><small>Units${r.risked ? ` &middot; ROI ${pct(100 * r.sized / r.risked)}` : ""} &middot; 1u each ${num(r.units, 2, true)}u</small></div>
-        <div><b class="${beatTone}">${beat}</b><small>Beat the close</small></div></div>
-      ${recapCurve(r)}
-      <div class="rc-m">${MK.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(MKT(k).weeks[r.key])}</span>`).join("")}</div>
-      <div class="rc-f">${r.best ? `<a href="${linkTo(r.best).replace(/^.*\//, "")}">Best hit: <b>${esc(r.best.player)}</b> ${r.best.side} ${r.best.line} (${r.best.price > 0 ? "+" : ""}${r.best.price}) &middot; had <b class="up">${r.best.actual}</b></a>` : "<span></span>"}
-        <span class="rc-btns"><a class="more" href="./?season=${r.season}&week=${r.w}">See every pick &rarr;</a><a class="more" href="recap/${r.key}.png" download="line-ledger-${r.key}.png">Image</a><button type="button" class="rshare" data-key="${r.key}" data-text="${esc(text)}">Share</button></span></div></article>`;
+    const text = `Line Ledger, ${PERIOD} ${r.w}: ` + r.markets.map((m) => `${MKT(m.k).short || MKT(m.k).label} ${m.W}-${m.L}${m.P ? "-" + m.P : ""}, ${num(m.sized, 2, true)}u`).join("; ");
+    const mk = [...r.markets].sort((a, b) => b.n - a.n);                  // the busiest market first
+    const b = r.best;
+    return `<article class="rcx" id="recap-${r.key}">
+      <header class="rcx-h">
+        <div><span class="rcx-eyebrow">${PERIOD} in review &middot; ${r.season}</span><h2>${PERIOD} ${r.w}</h2>
+          <span class="rcx-sub">All ${r.n} picks graded &middot; each market on its own</span></div>
+        <div class="rcx-act"><a class="rcx-btn" href="recap/${r.key}.png" download="line-ledger-${r.key}.png">Image</a>
+          <button type="button" class="rcx-btn rshare" data-key="${r.key}" data-text="${esc(text)}">Share</button></div>
+      </header>
+      <div class="rcx-grid${mk.length === 1 ? " one" : ""}">${mk.map(recapMarket).join("")}</div>
+      <footer class="rcx-f">
+        ${b ? `<a class="rcx-best" href="${linkTo(b).replace(/^.*\//, "")}"><span class="rcx-star" aria-hidden="true">&#9733;</span><span><em>Best hit</em> <b>${esc(b.player)}</b> ${b.side} ${b.line} <span class="muted">(${b.price > 0 ? "+" : ""}${b.price})</span> &middot; had <b class="up">${b.actual}</b></span></a>` : "<span></span>"}
+        <a class="rcx-all" href="./?season=${r.season}&week=${r.w}">See every pick &rarr;</a>
+      </footer></article>`;
   }
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("button.rshare");
