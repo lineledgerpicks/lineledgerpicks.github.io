@@ -58,28 +58,52 @@
   const seasons = [...new Set(allPicks.map((p) => p.season))].sort((a, b) => b - a);
   const periodsOf = (season, picks = allPicks) => [...new Set(picks.filter((p) => p.season === season).map((p) => p.week))].sort((a, b) => b - a);
 
-  /* ------------------------------------------------------------------ navigation (built from the markets) */
-  // sport switcher first, then that sport's own tabs, then the pages every sport shares
+  /* ------------------------------------------------------------------ navigation (built from the markets)
+     Three kinds of page, kept apart: the places you go each week (This week, Open, Results, Parlays) as tabs; the
+     records (one per market, plus closing line value) under one Records menu; How it works on the right.  Phones
+     get the places as a bottom tab bar, the rest under More. */
   const F = SPORT.files || {};
-  const sportTabs = (SPORT.markets || []).length
-    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`], ["open", F.open, "Open"], ["results", F.results, "Results"], ...(F.parlays ? [["parlays", F.parlays, "Parlays"]] : []),
-       ...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).short || MKT(k).label])]
-    : [["soon", href(F.home), "Overview"]];
   const keep = SPORT === SPORTS[0] ? "" : `?sport=${SPORT.key}`;
-  const tabs = [...sportTabs, ["clv", `clv.html${keep}`, "CLV"], ["method", `method.html${keep}`, "How it works"]];
+  const ICON = {
+    week: '<path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+    open: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    results: '<path d="M5 20V11M12 20V5M19 20v-6M3 20h18"/>',
+    parlays: '<path d="M8 7h11M8 12h11M8 17h11"/><circle cx="4.5" cy="7" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17" r="1"/>',
+    more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>' };
+  const svg = (k) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+  const places = (SPORT.markets || []).length
+    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["open", F.open, "Open", "open"], ["results", F.results, "Results", "results"],
+       ...(F.parlays ? [["parlays", F.parlays, "Parlays", "parlays"]] : [])]
+    : [["soon", href(F.home), "Overview", "week"]];
+  const records = [...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).label]), ["clv", `clv.html${keep}`, "Closing line value"]];
+  const how = ["method", `method.html${keep}`, "How it works"];
   const here = page === "market" ? `m:${pageMarket}` : page;
+  const cur = (id) => id === here ? ' aria-current="page"' : "";
+  const openBadge = (id) => id === "open" ? `<span class="badge" data-open-count hidden></span>` : "";
   const sportSwitch = SPORTS.length < 2 ? "" : `<div class="sports" role="group" aria-label="Sport">${SPORTS.map((s) =>
     `<a href="${href(s.files.home)}"${s.key === SPORT.key ? ' aria-current="true"' : ""}>${esc(s.name)}${(s.markets || []).length ? "" : "<small>soon</small>"}</a>`).join("")}</div>`;
-  $("tabs").innerHTML = sportSwitch + tabs.map(([id, link, label]) => `<a href="${link}"${id === here ? ' aria-current="page"' : ""}>${esc(label)}${id === "open" ? `<span class="badge" id="open-count" hidden></span>` : ""}</a>`).join("");
-  if (openNow.length) for (const id of ["open-count", "burger-count"]) { const b = $(id); if (b) { b.textContent = openNow.length; b.hidden = false; } }
-  const navbar = $("navbar"), burger = $("burger");
+  const inRecords = records.some(([id]) => id === here);
+  $("tabs").innerHTML = sportSwitch + places.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}${openBadge(id)}</a>`).join("")
+    + `<details class="navmenu"><summary${inRecords ? ' aria-current="page"' : ""}>Records<i aria-hidden="true"></i></summary><div class="navpop">
+        ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}</a>`).join("")}
+        <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a></div></details>`;
+  document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
+  // phones: the places as a bottom tab bar, everything else in the More sheet
+  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages">${places.map(([id, link, label, ic]) =>
+      `<a href="${link}"${cur(id)}>${svg(ic)}<span>${esc(id === "home" ? PERIOD : label)}</span>${openBadge(id)}</a>`).join("")}
+      <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
+    <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
+      ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
+      <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a></div></div>`);
+  if (openNow.length) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openNow.length; b.hidden = false; });
+  const navbar = $("navbar");
   const onScroll = () => navbar.classList.toggle("scrolled", scrollY > 8);
   addEventListener("scroll", onScroll, { passive: true }); onScroll();
-  const setMenu = (open) => { navbar.classList.toggle("open", open); burger.setAttribute("aria-expanded", String(open)); };
-  burger.addEventListener("click", (e) => { e.stopPropagation(); setMenu(!navbar.classList.contains("open")); });
-  document.addEventListener("click", (e) => { if (!navbar.contains(e.target)) setMenu(false); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
-  $("tabs").addEventListener("click", (e) => { if (e.target.closest("a")) setMenu(false); });
+  const setSheet = (open) => { $("msheet").hidden = !open; $("bmore").setAttribute("aria-expanded", String(open)); document.body.classList.toggle("sheet-open", open); };
+  $("bmore").addEventListener("click", (e) => { e.stopPropagation(); setSheet($("msheet").hidden); });
+  const closeMenus = () => { setSheet(false); document.querySelectorAll(".navmenu[open]").forEach((d) => d.removeAttribute("open")); };
+  document.addEventListener("click", (e) => { if (!e.target.closest(".navmenu, .ms-in, #bmore")) closeMenus(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
   $("updated").textContent = `Last updated ${D.updated} ET.`;
   $("theme").addEventListener("click", () => {
     const root = document.documentElement;
@@ -446,9 +470,9 @@
   // every way to narrow the list sits behind one Filter button (its count = filters switched on)
   state.fopen = false;
   const FUNNEL = `<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>`;
-  const toolbar = (pick, withMarket = true, panel = "") => `<div class="toolbar">${pick}<span class="tb-r">${searchBox()}
-      <button type="button" class="fbtn" id="fbtn" aria-expanded="${state.fopen}" aria-controls="fpanel">${FUNNEL}Filter<b class="fcount" id="fcount" hidden></b></button>${viewBar()}</span></div>
-    <div class="fpanel" id="fpanel"${state.fopen ? "" : " hidden"}>${withMarket ? `${marketSeg()}${filterChips()}` : ""}${panel}</div>`;
+  const toolbar = (pick, withMarket = true, panel = "") => `<div class="ctl"><div class="toolbar"><div class="tb-l">${pick}<span class="tb-jump" id="tb-jump"></span></div>
+      <span class="tb-r">${searchBox()}<button type="button" class="fbtn" id="fbtn" aria-expanded="${state.fopen}" aria-controls="fpanel">${FUNNEL}<span>Filter</span><b class="fcount" id="fcount" hidden></b></button>${viewBar()}</span></div>
+    <div class="fpanel" id="fpanel"${state.fopen ? "" : " hidden"}>${withMarket ? `${marketSeg()}${filterChips()}` : ""}${panel}</div></div>`;
   function filterCount() {
     const b = $("fcount"), panel = $("fpanel");
     if (!b || !panel || !panel.querySelectorAll) return;
@@ -600,7 +624,8 @@
     const n = list.filter((p) => p.phase === ph).length;
     return `<a href="#ph-${ph}" class="jp-${ph}"${n ? "" : ' aria-disabled="true"'}>${title}<span>${n}</span></a>`; }).join("")}</nav>`;
   function phaseSections(list, season, week) {
-    return jumpBar(list) + PHASES.map(([ph, title, sub]) => {
+    const tj = $("tb-jump"); if (tj) tj.innerHTML = jumpBar(list);             // Open / Live / Final sit in the control bar
+    return PHASES.map(([ph, title, sub]) => {
       const ps = list.filter((p) => p.phase === ph).sort(byKick);
       const rec = ph === "final" ? `<div class="phase-rec">${MK.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(periodRec(MKT(k), season, week))}</span>`).join("")}</div>` : "";
       return `<details class="phase ph-${ph}" id="ph-${ph}"${ps.length ? " open" : ""}><summary><span class="ph-t">${title}<span class="count">${ps.length}</span></span><span class="ph-s">${sub}</span></summary>
@@ -640,7 +665,8 @@
     redraw = (full) => {
       if (full !== false || !$("q")) $("tb").innerHTML = toolbar("");
       const list = openNow.filter(matches);
-      $("phases").innerHTML = jumpBar(list, PHASES.slice(0, 2)) + PHASES.slice(0, 2).map(([ph, title, sub]) => { const ps = list.filter((p) => p.phase === ph);
+      $("tb-jump").innerHTML = jumpBar(list, PHASES.slice(0, 2));
+      $("phases").innerHTML = PHASES.slice(0, 2).map(([ph, title, sub]) => { const ps = list.filter((p) => p.phase === ph);
         return `<details class="phase ph-${ph}" id="ph-${ph}"${ps.length ? " open" : ""}><summary><span class="ph-t">${title}<span class="count">${ps.length}</span></span><span class="ph-s">${sub}</span></summary>${ps.length ? picksBlock(ps) : `<div class="empty">Nothing ${title.toLowerCase()} right now.</div>`}</details>`; }).join("");
       afterDraw();
     };
