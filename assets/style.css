@@ -879,3 +879,17 @@ a.plink:hover { text-decoration: underline; text-decoration-thickness: 2px; text
   .ctl .fbtn > span { display: none; }
   .ctl .seg button { padding: 8px 9px; }
 }
+
+/* ---- app feel on phones: no zoom when tapping the search box (iOS zooms into text under 16px), no double-tap zoom,
+   and the page knows the phone's safe areas (viewport-fit=cover) so the bars clear the notch and the home indicator */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+.navbar { padding-top: env(safe-area-inset-top, 0px); }
+.ctl { top: calc(60px + env(safe-area-inset-top, 0px)); }
+@media (max-width: 680px) {
+  input, select, textarea, .search input, .pickers select { font-size: 16px; }
+  .ctl { top: calc(56px + env(safe-area-inset-top, 0px)); }
+  .bbar { padding: 8px 4px max(14px, calc(env(safe-area-inset-bottom, 0px) + 6px)); }
+  body { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+  .ms-in { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+  #pchip { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
+}
