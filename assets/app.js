@@ -18,6 +18,7 @@
   const MK = (D.markets || Object.keys(D.props)).filter((k) => D.props[k] && (SPORT.markets || []).includes(k));
   const href = (file) => file === "index.html" ? "./" : file;
   const MKT = (k) => D.props[k];
+  const nm = (p) => p.name || p.player;          // full name when known ("Ja'Marr Chase"), else the short one
 
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const odds = (p) => p == null ? "&ndash;" : (p > 0 ? "+" : "") + p;
@@ -69,11 +70,12 @@
     open: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     results: '<path d="M5 20V11M12 20V5M19 20v-6M3 20h18"/>',
     parlays: '<path d="M8 7h11M8 12h11M8 17h11"/><circle cx="4.5" cy="7" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17" r="1"/>',
+    tools: '<path d="M4 20l7-7M14.5 3.5a4.5 4.5 0 0 0-4 6.5L4 16.5V20h3.5l6.5-6.5a4.5 4.5 0 0 0 6.5-4l-3 1-2.5-2.5 1-3z"/>',
     more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>' };
   const svg = (k) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
   const places = (SPORT.markets || []).length
     ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["open", F.open, "Open", "open"], ["results", F.results, "Results", "results"],
-       ...(F.parlays ? [["parlays", F.parlays, "Parlays", "parlays"]] : [])]
+       ...(F.parlays ? [["parlays", F.parlays, "Parlays", "parlays"]] : []), ["tools", `tools.html${keep}`, "Tools", "tools"]]
     : [["soon", href(F.home), "Overview", "week"]];
   const records = [...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).label]), ["clv", `clv.html${keep}`, "Closing line value"]];
   const how = ["method", `method.html${keep}`, "How it works"];
@@ -89,11 +91,13 @@
         <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a></div></details>`;
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, everything else in the More sheet
-  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages">${places.map(([id, link, label, ic]) =>
+  const tabsFit = places.filter(([id]) => id !== "tools"), toolsLink = places.find(([id]) => id === "tools");
+  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages">${tabsFit.map(([id, link, label, ic]) =>
       `<a href="${link}"${cur(id)}>${svg(ic)}<span>${esc(id === "home" ? PERIOD : label)}</span>${openBadge(id)}</a>`).join("")}
-      <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
+      <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" || here === "tools" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
       ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
+      ${toolsLink ? `<div class="eyebrow">Tools</div><a href="${toolsLink[1]}"${cur("tools")}>Bet sizing, odds, parlays, player lookup<i aria-hidden="true">&rsaquo;</i></a>` : ""}
       <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a></div></div>`);
   if (openNow.length) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openNow.length; b.hidden = false; });
   const navbar = $("navbar");
@@ -147,7 +151,7 @@
     if (state.market !== "all" && p.prop !== state.market) return false;
     if (!state.q) return true;
     const q = state.q.toLowerCase();
-    return [p.player, p.team, p.opp, p.serial].some((x) => String(x || "").toLowerCase().includes(q));
+    return [p.player, p.name, p.team, p.opp, p.serial].some((x) => String(x || "").toLowerCase().includes(q));
   };
   function pickers(picks, allowAll) {
     if (!seasons.length) return "";
@@ -219,7 +223,7 @@
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("button.share");
     if (!b) return;
-    const p = byId[b.dataset.serial], url = new URL(`p/${p.serial}.html`, location.href).href, text = `${p.player} ${p.side} ${p.line} (${odds(p.price)}) - Line Ledger`;
+    const p = byId[b.dataset.serial], url = new URL(`p/${p.serial}.html`, location.href).href, text = `${nm(p)} ${p.side} ${p.line} (${odds(p.price)}) - Line Ledger`;
     try { if (navigator.share) await navigator.share({ title: text, url }); else { await navigator.clipboard.writeText(url); b.textContent = "Copied"; setTimeout(() => (b.textContent = "Share"), 1600); } } catch (err) {}
   });
   function revealHash() {
@@ -242,7 +246,7 @@
 
   // every pick on one player: player.html?id=<player id>
   const playerHref = (pid) => `${(SPORT.files || {}).player || "player.html"}?id=${encodeURIComponent(pid)}`;
-  const playerLink = (p) => p.pid ? `<a class="plink" href="${playerHref(p.pid)}" title="Every pick on ${esc(p.player)}">${esc(p.player)}</a>` : esc(p.player);
+  const playerLink = (p) => p.pid ? `<a class="plink" href="${playerHref(p.pid)}" title="Every pick on ${esc(nm(p))}">${esc(nm(p))}</a>` : esc(nm(p));
 
   /* ------------------------------------------------------------------ status of a pick: open / live / grading / final */
   function status(p, short) {
@@ -329,7 +333,7 @@
   function betButton(p, featured) {
     if (p.phase !== "open" || !p.bet_link || !BOOKS_OK[p.book]) return "";
     const what = p.bet_kind === "slip" ? "opens the bet" : p.bet_kind === "event" ? "opens the game" : "opens the book";
-    const tip = `${p.book} ${what}: ${p.player} ${MKT(p.prop).short || MKT(p.prop).label} ${p.side} ${p.line}. Nothing is placed for you.`;
+    const tip = `${p.book} ${what}: ${nm(p)} ${MKT(p.prop).short || MKT(p.prop).label} ${p.side} ${p.line}. Nothing is placed for you.`;
     return `<a class="${featured ? "fc-bet" : "share betlink"}" href="${esc(p.bet_link)}" target="_blank" rel="noopener noreferrer" title="${esc(tip)}"
       aria-label="Bet on ${esc(p.book)}: ${esc(tip)}"><i class="bkdot ${BOOKS_OK[p.book]}" aria-hidden="true"></i>${featured ? `Bet at ${esc(p.book)}` : `Bet ${BOOKS_OK[p.book].toUpperCase()}`} &nearr;</a>`;
   }
@@ -365,16 +369,19 @@
     if (p.phase === "open") { const w = moveWord(p).replace(/<\/?b[^>]*>/g, ""); return `<span class="cs-clv ${w === "Your way" ? "up" : w === "Against" ? "down" : "muted"}">${w === "&ndash;" ? "no move yet" : w.toLowerCase()}</span>`; }
     return `<span class="cs-clv muted">close pending</span>`;
   }
+  // calm stubs: an open pick shows only its countdown on the right, a graded one its result and CLV; the line-move
+  // and Sharp labels live in the full ticket (tap to open).  false = the busier stub as it was before Nov 2026
+  const CALM_STUBS = false;
   function stubTicket(p) {
     const P = MKT(p.prop);
     return `<article class="cstub${p.result ? " graded r-" + p.result : ""}" id="${esc(p.serial)}" data-serial="${esc(p.serial)}" style="${band(p)}">
-      <button type="button" class="cs-row" aria-expanded="false" aria-label="${esc(p.player)} ${p.side} ${p.line}: show the full ticket">
+      <button type="button" class="cs-row" aria-expanded="false" aria-label="${esc(nm(p))} ${p.side} ${p.line}: show the full ticket">
         <span class="cs-l">
           <span class="cs-meta">${gameLabel(p)}<span class="cs-mk">${esc(P.short || P.label)}</span></span>
-          <span class="cs-player">${esc(p.player)}</span>
+          <span class="cs-player">${esc(nm(p))}</span>
           <span class="cs-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(abbr(p.book))}</small></span>
         </span>
-        <span class="cs-r">${status(p, true)}${clvMini(p)}${p.sharp ? `<span class="cs-sharp ${p.sharp === "no line" ? "noline" : p.sharp}" title="${SHARP[p.sharp] || ""}">${p.sharp === "no line" ? "&ndash;" : p.sharp === "agrees" ? "sharp &#10003;" : p.sharp === "against" ? "sharp &#10007;" : "sharp ~"}</span>` : ""}</span>
+        <span class="cs-r">${status(p, true)}${CALM_STUBS ? (p.phase === "final" ? clvMini(p) : "") : clvMini(p) + (p.sharp ? `<span class="cs-sharp ${p.sharp === "no line" ? "noline" : p.sharp}" title="${SHARP[p.sharp] || ""}">${p.sharp === "no line" ? "&ndash;" : p.sharp === "agrees" ? "sharp &#10003;" : p.sharp === "against" ? "sharp &#10007;" : "sharp ~"}</span>` : "")}</span>
         <span class="cs-chev" aria-hidden="true"></span>
       </button>
       <div class="cs-full" hidden></div>
@@ -413,12 +420,14 @@
   function tote(rec, P, compact) {
     const r = rec[0] || { n: 0 };
     const n = r.n_clv || 0;
-    const cells = [["key", `<b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b>`, `value vs close <em class="n">n=${n}${n < 50 ? ", early" : ""}</em>`],
-      ["", `<b>${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</b>`, "beat the close"],
-      ["", `<b>${wl(r)}</b>`, P.paper ? "paper record" : "record"],
+    // what a newcomer reads first (record, units), then the closing-line numbers, each with a plain-English tip
+    const cells = [["", `<b>${wl(r)}</b>`, P.paper ? "paper record" : "record", ""],
       ["", `<b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 2, true) + "u" : "&ndash;"}</b>`,
-        `units${r.sized_roi != null ? ` &middot; ROI ${pct(r.sized_roi)}` : ""} <em class="n">1u each: ${r.n ? num(r.units, 2, true) + "u" : "&ndash;"}</em>`]];
-    return `<div class="tote${compact ? " compact" : ""}">${cells.map(([c, b, s]) => `<div class="${c}">${b}<span>${s}</span></div>`).join("")}</div>`;
+        `units${r.sized_roi != null ? ` &middot; ${pct(r.sized_roi)} ROI` : ""}`, "Profit in units, each pick at the size on its ticket and the stamped price"],
+      ["", `<b>${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</b>`, "beat the close", "How often the pick's price was better than the final price before kickoff"],
+      ["", `<b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b>`, `value vs close${n && n < EARLY ? ` <em class="n">early</em>` : ""}`,
+        `How much better or worse the pick's price was than the closing market, on average (${n} picks). Positive means the price beat the market.`]];
+    return `<div class="tote${compact ? " compact" : ""}">${cells.map(([c, b, s, t]) => `<div class="${c}"${t ? ` title="${esc(t)}"` : ""}>${b}<span>${s}</span></div>`).join("")}</div>`;
   }
   const scoreboard = () => `<div class="boards">${MK.map((k) => { const P = MKT(k);
     return `<a class="sb" href="${P.slug}.html"><div class="sb-h"><span>${esc(P.label)}</span>${P.paper ? `<span class="chip paper">paper</span>` : `<span class="chip rec">the record</span>`}</div>${tote(P.record, P, true)}</a>`; }).join("")}</div>`;
@@ -489,8 +498,8 @@
   /* the moving strip of open picks (home) */
   function miniTicket(p) {
     const P = MKT(p.prop);
-    return `<a class="mt" href="${linkTo(p)}" style="${band(p)}" aria-label="${esc(p.player)} ${p.side} ${p.line}">
-      <span class="m-top"><span class="gteams">${gameLabel(p)}</span>${status(p, true)}</span><span class="m-player">${esc(p.player)}</span>
+    return `<a class="mt" href="${linkTo(p)}" style="${band(p)}" aria-label="${esc(nm(p))} ${p.side} ${p.line}">
+      <span class="m-top"><span class="gteams">${gameLabel(p)}</span>${status(p, true)}</span><span class="m-player">${esc(nm(p))}</span>
       <span class="m-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(abbr(p.book))} &middot; ${esc(P.short || P.label)}</small></span>
       <span class="m-foot">${sharpChip(p.sharp)}${(() => { const v = vsLine(p); return v && !v.stale ? `<span class="m-now ${v.ok === false ? "pass" : "ok"}">now ${odds(v.price)}</span>` : ""; })()}</span></a>`;
   }
@@ -516,7 +525,7 @@
     return `<aside class="feat-card" style="${band(p)}" aria-label="Featured pick" title="${esc(why)}">
       <div class="fc-h"><span>Featured &middot; top edge</span>${status(p, true)}</div>
       <div class="fc-g">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></div>
-      <div class="fc-player">${esc(p.player)}</div>
+      <div class="fc-player">${esc(nm(p))}</div>
       <div class="fc-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(p.book)} &middot; ${esc(P.short || P.label)}</small></div>
       <div class="fc-stats"><span>EV <b>${pct(p.ev)}</b></span><span>Win <b>${pct(p.win, false)}</b></span>${p.sharp === "agrees" ? `<span class="fc-sharp">Sharp &#10003;</span>` : ""}</div>
       <div class="fc-f">${betButton(p, true) || "<span>Picked by the numbers, not by hand</span>"}<a href="${linkTo(p).replace(/^.*\//, "")}">Full ticket &rarr;</a></div></aside>`;
@@ -555,7 +564,7 @@
     const lo = lo0 - pad, hi = hi0 + pad, x = (i) => (i / (pts.length - 1)) * W, y = (v) => ((hi - v) / (hi - lo)) * H;
     const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
     const cls = run >= 0 ? "up" : "down", id = `rcg-${r.key}`, step = W / (pts.length - 1);
-    const hits = r.graded.map((p, i) => `<rect x="${(x(i + 1) - step / 2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${H}"><title>${esc(p.player)} ${p.side} ${p.line}: ${p.result} ${num(p.pl_u, 2, true)}u, running ${num(pts[i + 1], 2, true)}u</title></rect>`).join("");
+    const hits = r.graded.map((p, i) => `<rect x="${(x(i + 1) - step / 2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${H}"><title>${esc(nm(p))} ${p.side} ${p.line}: ${p.result} ${num(p.pl_u, 2, true)}u, running ${num(pts[i + 1], 2, true)}u</title></rect>`).join("");
     return `<figure class="rc-curve ${cls}"><figcaption>Running units &middot; ${r.graded.length} picks in kickoff order</figcaption>
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Running units over the ${PERIOD.toLowerCase()}: finished ${num(run, 2, true)}u">
         <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" class="g0"/><stop offset="1" class="g1"/></linearGradient></defs>
@@ -591,7 +600,7 @@
       </header>
       <div class="rcx-grid${mk.length === 1 ? " one" : ""}">${mk.map(recapMarket).join("")}</div>
       <footer class="rcx-f">
-        ${b ? `<a class="rcx-best" href="${linkTo(b).replace(/^.*\//, "")}"><span class="rcx-star" aria-hidden="true">&#9733;</span><span><em>Best hit</em> <b>${esc(b.player)}</b> ${b.side} ${b.line} <span class="muted">(${b.price > 0 ? "+" : ""}${b.price})</span> &middot; had <b class="up">${b.actual}</b></span></a>` : "<span></span>"}
+        ${b ? `<a class="rcx-best" href="${linkTo(b).replace(/^.*\//, "")}"><span class="rcx-star" aria-hidden="true">&#9733;</span><span><em>Best hit</em> <b>${esc(nm(b))}</b> ${b.side} ${b.line} <span class="muted">(${b.price > 0 ? "+" : ""}${b.price})</span> &middot; had <b class="up">${b.actual}</b></span></a>` : "<span></span>"}
         <a class="rcx-all" href="./?season=${r.season}&week=${r.w}">See every pick &rarr;</a>
       </footer></article>`;
   }
@@ -637,16 +646,13 @@
     hero(`${esc(SPORT.name)} player props &middot; ${D.season}`, "Every pick stamped. <em>Every result kept.</em>",
       "Player props priced against DraftKings and FanDuel, posted before the start and graded against the closing line. Nothing is edited or removed.", scoreboard(), featured());
     if (state.week == null || state.week === "all") state.week = D.week;
-    const strip = openNow.filter((p) => p.phase === "open");
+    // one story: the record (hero), last week's recap, then this week's picks (the moving strip was a third copy of
+    // the open picks; marquee() stays for any page that wants it)
     $("app").innerHTML = `
       ${homeRecap()}
-      ${strip.length >= 3 ? `<section class="openstrip"><div class="head"><div><div class="eyebrow">Up next</div><h2>Open now <span class="count">${strip.length}</span></h2></div>
-        <span class="headbtns"><button type="button" class="mtoggle" id="mtoggle" aria-pressed="false">Pause</button><a class="more" href="${F.open}">All open &rarr;</a></span></div>${marquee(strip)}</section>` : ""}
-      <section><div class="head"><div><div class="eyebrow">${PERIOD} at a glance</div><h2 id="wk-title"></h2></div></div>
+      <section><div class="head"><div><h2 id="wk-title"></h2></div><a class="more" href="${F.open}">All open picks &rarr;</a></div>
         <div id="tb"></div><div id="phases" class="phases"></div></section>
       ${notify()}`;
-    const m = $("marquee"), b = $("mtoggle");
-    if (m && b) b.onclick = () => { const on = m.classList.toggle("paused"); b.textContent = on ? "Play" : "Pause"; };
     redraw = (full) => {
       if (full !== false || !$("pk-season")) $("tb").innerHTML = toolbar(pickers(allPicks, false));
       $("wk-title").textContent = `${PERIOD} ${state.week ?? "-"}, ${state.season}`;
@@ -681,10 +687,10 @@
         <div class="wk-m">${MK.map((k) => `<div><em>${esc(MKT(k).short || MKT(k).label)}</em><span>${recLine(MKT(k).weeks[key])}</span></div>`).join("")}</div><span class="wk-go">Open &rarr;</span></a>`; }).join("");
     const r = latestRecap();
     $("app").innerHTML = `${r ? `<section>${recapCard(r)}</section>` : ""}
-      <section><div><div class="eyebrow">Season to date</div><h2>Totals</h2></div><div class="boards light">${MK.map((k) => { const P = MKT(k);
+      <section><div><h2>Totals</h2></div><div class="boards light">${MK.map((k) => { const P = MKT(k);
         return `<a class="sb" href="${P.slug}.html"><div class="sb-h"><span>${esc(P.label)}</span>${P.paper ? `<span class="chip paper">paper</span>` : `<span class="chip rec">the record</span>`}</div>${tote(P.record, P, true)}</a>`; }).join("")}</div>
         <div class="charts">${MK.map((k) => unitsChart(MKT(k))).join("")}</div></section>
-      <section><div><div class="eyebrow">Newest first</div><h2>Every ${PERIOD.toLowerCase()}</h2></div><div class="wkcards">${cards || `<div class="empty">No graded ${PERIOD.toLowerCase()}s yet.</div>`}</div></section>`;
+      <section><div><h2>Every ${PERIOD.toLowerCase()}</h2></div><div class="wkcards">${cards || `<div class="empty">No graded ${PERIOD.toLowerCase()}s yet.</div>`}</div></section>`;
   }
 
   function marketPage(key) {
@@ -699,9 +705,9 @@
       ["agrees", "Sharp agrees", (p) => p.sharp === "agrees"], ["against", "Sharp against", (p) => p.sharp === "against"]];
     let active = "all";
     $("app").innerHTML = `
-      <section><div class="head"><div><div class="eyebrow">Each pick at its ticket size &middot; 1u each alongside</div><h2>Record</h2></div></div>${recordTable(P.record)}${unitsChart(P)}
+      <section><div class="head"><div><h2>Record</h2></div></div>${recordTable(P.record)}${unitsChart(P)}
         ${P.record.some((r) => r.label === "Pre-launch") ? `<p class="note"><span class="chip pre">pre-launch</span> picks were made by the same model and time-stamped in our private ledger, but not posted publicly before the start. From ${esc(D.launch)} on, every pick is posted before the start.</p>` : ""}</section>
-      <section><div class="head"><div><div class="eyebrow">Newest first</div><h2>Every pick</h2></div></div><div id="tb"></div><div id="picks" class="weekgroups"></div></section>`;
+      <section><div class="head"><div><h2>Every pick</h2></div></div><div id="tb"></div><div id="picks" class="weekgroups"></div></section>`;
     document.addEventListener("click", (e) => { const b = e.target.closest("#chips button[data-k]"); if (b) { active = b.dataset.k; redraw(false); } });
     redraw = (full) => {
       if (full !== false || !$("pk-season")) $("tb").innerHTML = toolbar(pickers(P.picks, true), false, `<div class="filters" id="chips" role="group" aria-label="Show"></div>`);
@@ -735,7 +741,7 @@
     const row = (label, r, P) => `<tr><td>${label}</td><td class="num opt">${r.n_clv || 0}</td><td class="num key ${tone(r.clv_ev)}">${pct(r.clv_ev)}</td><td class="num">${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</td><td class="num opt ${tone(r.clv)}">${r.clv == null ? "&ndash;" : sgn(r.clv) + r.clv.toFixed(1) + " " + P.unit}</td></tr>`;
     const table = (rows) => `<div class="tablebox"><table><thead><tr><th>Picks</th><th class="num opt">Closes</th><th class="num key">Value vs close</th><th class="num">Beat close</th><th class="num opt">Avg move</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     const graded = allPicks.filter((p) => p.clv_ev != null).sort((a, b) => b.clv_ev - a.clv_ev);
-    const mini = (p) => `<a class="mini" href="${pageOf(p)}?season=${p.season}&week=${p.week}#${p.serial}"><span><b>${esc(p.player)}</b> ${p.side} ${p.line} <span class="muted">${odds(p.price)} &middot; ${short(p.prop)} &middot; ${PERIOD.toLowerCase()} ${p.week}</span></span><span class="mono ${tone(p.clv_ev)}">${pct(p.clv_ev)}</span></a>`;
+    const mini = (p) => `<a class="mini" href="${pageOf(p)}?season=${p.season}&week=${p.week}#${p.serial}"><span><b>${esc(nm(p))}</b> ${p.side} ${p.line} <span class="muted">${odds(p.price)} &middot; ${short(p.prop)} &middot; ${PERIOD.toLowerCase()} ${p.week}</span></span><span class="mono ${tone(p.clv_ev)}">${pct(p.clv_ev)}</span></a>`;
     $("app").innerHTML = `<section><div class="clvcards">${cards}</div></section>
       ${charts ? `<section><div><div class="eyebrow">Is the edge holding?</div><h2>Over time</h2></div><p class="lede">The running average of value vs close, pick by pick. Early on it swings; what matters is where it settles.</p><div class="charts">${charts}</div></section>` : ""}
       <section><div><div class="eyebrow">${PERIOD} by ${PERIOD.toLowerCase()}</div><h2>By ${PERIOD.toLowerCase()}</h2></div>${table(byWeek.map(({ k, key, r }) => row(`${PERIOD} ${key.split("-")[1]} <span class="muted">${key.split("-")[0]} &middot; ${short(k)}</span>`, r, MKT(k))).join(""))}</section>
@@ -759,8 +765,8 @@
     const cells = [["Record", graded.length ? `${count("W")}-${count("L")}${count("P") ? "-" + count("P") : ""}` : "&ndash;", ""],
       ["Units", graded.length ? `${num(units, 2, true)}u` : "&ndash;", tone(units)], [`Value vs close${earlyNote(clvs.length)}`, pct(clv), tone(clv)],
       ["Picks", String(ps.length), ""]];
-    hero(`${esc(p0.team)} &middot; ${markets}`, esc(p0.player),
-      `Every pick the model made on ${esc(p0.player)}, newest first, graded at the size on its ticket and the stamped price.${ps.some((p) => p.paper) ? " Paper picks (tracked, not bet) are marked." : ""}`,
+    hero(`${esc(p0.team)} &middot; ${markets}`, esc(nm(p0)),
+      `Every pick the model made on ${esc(nm(p0))}, newest first, graded at the size on its ticket and the stamped price.${ps.some((p) => p.paper) ? " Paper picks (tracked, not bet) are marked." : ""}`,
       `<div class="rc-grid hero-stats">${cells.map(([h, v, c]) => `<div><small>${h}</small><b class="${c}">${v}</b></div>`).join("")}</div>`);
     $("app").innerHTML = `<section><div class="toolbar"><span class="tb-r">${viewBar()}</span></div><div id="picks" class="weekgroups"></div></section>`;
     redraw = () => {
@@ -776,7 +782,7 @@
     hero(`${esc(SPORT.name)} &middot; coming soon`, `${esc(SPORT.name)} <em>props</em>`,
       `The ${esc(SPORT.name)} model is in the works. When it's ready, its picks get the same treatment as every other sport here: stamped when made, posted before ${esc(SPORT.event || "the start")}, graded against the closing line, and never edited.`);
     $("app").innerHTML = `
-      <section><div class="head"><div><div class="eyebrow">${PERIOD} at a glance</div><h2>Today's board</h2></div></div>
+      <section><div class="head"><div><h2>Today's board</h2></div></div>
         <div class="phases">${phaseSections([], null, null)}</div></section>
       <section><div><div class="eyebrow">What to expect</div><h2>Same ledger, new sport</h2></div><div class="steps">
         <div><h3>One slate a ${PERIOD.toLowerCase()}</h3><p>Picks are grouped by ${PERIOD.toLowerCase()}, with the same Open, Live and Final sections, views and search.</p></div>
@@ -879,9 +885,9 @@
     const box = $("pbuild");
     if (!box) return;
     const items = slipAt(pbook), ok = items.filter((x) => x.q), missing = items.filter((x) => !x.q);
-    const leg = ({ p, q }) => `<li class="${q ? "" : "off"}"><div><b>${esc(p.player)}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span>
+    const leg = ({ p, q }) => `<li class="${q ? "" : "off"}"><div><b>${esc(nm(p))}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span>
         <small>${q ? `${odds(q.price)} &middot; model ${pct(q.win, false)}` : `not listed at ${esc(pbook)} - not counted`}</small></div>
-        <button type="button" class="ps-x" data-premove="${esc(p.serial)}" aria-label="Remove ${esc(p.player)}">&times;</button></li>`;
+        <button type="button" class="ps-x" data-premove="${esc(p.serial)}" aria-label="Remove ${esc(nm(p))}">&times;</button></li>`;
     const open = openNow.filter((p) => p.phase === "open" && canParlay(p));
     const inGames = new Set(legs.map((s) => byId[s] && byId[s].game_id));
     const games = gamesOf(open);
@@ -895,7 +901,7 @@
       <div class="pb-pool">${games.length ? games.map((g) => `<div class="pb-game"><div class="pb-gh"><span class="gteams">${tm(g.away)}<i class="at">@</i>${tm(g.home)}</span><span class="mono muted">${when(g.kick_utc, g.kick)}</span></div>
         ${g.picks.map((p) => { const q = at(p, pbook), on = legs.includes(p.serial), blocked = !on && inGames.has(p.game_id);
           return `<button type="button" class="pb-pick${on ? " on" : ""}" data-padd="${esc(p.serial)}" aria-pressed="${on}"${q ? "" : " disabled"}${blocked ? ' data-blocked="1"' : ""}>
-            <span><b>${esc(p.player)}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span></span>
+            <span><b>${esc(nm(p))}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span></span>
             <span class="mono">${q ? `${odds(q.price)}<small>model ${pct(q.win, false)}</small>` : `<small>not at ${esc(abbr(pbook))}</small>`}</span></button>`; }).join("")}</div>`).join("")
         : `<div class="empty">No open picks to build with right now. New ones appear as the books post lines.</div>`}</div></div>`;
   }
@@ -904,7 +910,7 @@
     const p = byId[s];
     pNote = "";
     if (legs.includes(s)) legs = legs.filter((x) => x !== s);
-    else if (legs.some((x) => byId[x] && byId[x].game_id === p.game_id)) pNote = `One leg per game: ${esc(p.player)}'s game is already in your parlay.`;
+    else if (legs.some((x) => byId[x] && byId[x].game_id === p.game_id)) pNote = `One leg per game: ${esc(nm(p))}'s game is already in your parlay.`;
     else if (legs.length >= PMAX) pNote = `Up to ${PMAX} legs.`;
     else legs.push(s);
   }
@@ -932,7 +938,7 @@
       <p class="ps-note">${x.locked ? `Fewer than ${PR.legs} Sunday games had a pick at ${esc(x.book)} at the lock, so there was no parlay this ${PERIOD.toLowerCase()}.` : `Not enough Sunday picks at ${esc(x.book)} yet. It fills in as lines are posted.`}</p></article>`;
     const canLoad = !x.locked && x.legs.every((l) => canParlay(byId[l.serial]));
     return `<article class="pm-card${x.result ? " res-" + x.result : ""}"><header><span class="pm-book">${esc(x.book)}</span>${state}</header>
-      <ol class="pm-legs">${x.legs.map((l) => `<li><span class="pm-r ${l.result || ""}">${l.result ? RES[l.result] : ""}</span><a href="${byId[l.serial] ? pageOf(byId[l.serial]) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(l.player)}</b> ${l.side} ${l.line}</a>
+      <ol class="pm-legs">${x.legs.map((l) => `<li><span class="pm-r ${l.result || ""}">${l.result ? RES[l.result] : ""}</span><a href="${byId[l.serial] ? pageOf(byId[l.serial]) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(byId[l.serial] ? nm(byId[l.serial]) : l.player)}</b> ${l.side} ${l.line}</a>
         <span class="muted">${short(l.prop)}</span><span class="mono">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : `<small>model ${pct(l.win, false)}</small>`}</span></li>`).join("")}</ol>
       <dl class="ps-nums">${stat("Pays", odds(x.american))}${stat("Book's chance", pct(x.book_chance, false))}${stat("Model's chance", pct(x.model_chance, false))}</dl>
       <footer><span class="muted">${x.locked ? `Stamped at the lock, ${when(x.lock_utc, x.lock)}` : `Last rebuilt ${esc(x.built || "")} ET`}</span>${canLoad ? `<button type="button" class="ps-clear" data-pload="${i}">Open in builder</button>` : ""}</footer></article>`;
@@ -962,8 +968,220 @@
     drawChip();
   }
 
+  /* ------------------------------------------------------------------ Tools: bet sizing, odds, parlays, player lookup.
+     Everything is worked out in the browser; the only thing kept is the bankroll you typed (this browser only). */
+  const toDec = (a) => a >= 100 ? 1 + a / 100 : a <= -100 ? 1 + 100 / -a : null;
+  const toAm = (d) => d >= 2 ? Math.round((d - 1) * 100) : d > 1 ? Math.round(-100 / (d - 1)) : null;
+  const money = (v) => v == null || !isFinite(v) ? "&ndash;" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const parseOdds = (t) => { const v = parseFloat(String(t).replace(/[^\d.+-]/g, "")); return isFinite(v) && Math.abs(v) >= 100 ? v : null; };
+  const field = (id, label, value, extra = "") => `<label class="tf"><span>${label}</span><input id="${id}" inputmode="decimal" autocomplete="off" value="${esc(value)}"${extra}></label>`;
+
+  // a typical week: what the model's picks of the last 3 finished weeks added up to, in units (the same rule the
+  // model uses for its own unit)
+  function typicalWeek() {
+    const wk = {};
+    allPicks.forEach((p) => { const k = `${p.season}-${String(p.week).padStart(2, "0")}`; (wk[k] = wk[k] || []).push(p); });
+    const done = Object.keys(wk).sort().filter((k) => wk[k].every((p) => p.phase === "final")).slice(-3);
+    if (!done.length) return null;
+    return { units: done.reduce((t, k) => t + wk[k].reduce((u, p) => u + (p.units || 0), 0), 0) / done.length, weeks: done.length };
+  }
+
+  // the stake you'd actually type at the book: to the nearest 50 cents, never under $1 (how Line Ledger rounds its own)
+  const roundStake = (v) => Math.max(1, Math.round(v * 2) / 2);
+  const TOOLS = [["sizing", "Bet sizing", "What a pick's units mean in dollars, for your bankroll."],
+                 ["odds", "Odds", "What any price means: win chance, payout, and the fair price without the book's cut."],
+                 ["parlay", "Parlay", "What a parlay pays and how often one like it hits."],
+                 ["player", "Player lookup", "How often a receiver went over a line this season, game by game."]];
+
+  function toolsPage() {
+    hero("Free tools", "Bettor's <em>toolkit</em>", "Nothing you type here leaves your browser.");
+    const typ = typicalWeek();
+    const bank0 = parseFloat(store.get("ll-bank")) || 1000, share0 = parseFloat(store.get("ll-share")) || 25;
+    const q0 = new URLSearchParams(location.search), h0 = location.hash.slice(1);
+    const first = q0.get("player") ? "player" : TOOLS.some(([k]) => k === h0) ? h0 : TOOLS.some(([k]) => k === store.get("ll-tool")) ? store.get("ll-tool") : "sizing";
+    $("app").innerHTML = `<section class="tbox">
+      <div class="tswitch" role="tablist" aria-label="Tools">${TOOLS.map(([k, l]) => `<button type="button" role="tab" data-tool="${k}" aria-controls="t-${k}">${l}</button>`).join("")}</div>
+      <div id="t-sizing" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[0][2]}</p>
+        <div class="tool tgrid">
+          <div class="tin">${field("s-bank", "Your bankroll ($)", bank0)}
+            <div class="tf"><span>A typical week risks</span><div class="tseg" id="s-share" role="group" aria-label="A typical week risks">${[10, 15, 25, 35].map((v) => `<button type="button" data-share="${v}" aria-pressed="${v === share0}">${v}%</button>`).join("")}</div><small class="tnote">25% is what we use</small></div></div>
+          <div class="tout" id="s-out"></div></div>
+        <div id="s-picks"></div>
+        <details class="thow"><summary>How is this worked out?</summary><p>${typ ? `A typical week of our picks adds up to about <b>${typ.units.toFixed(0)}u</b> (the last ${typ.weeks} finished weeks). So 1u = your bankroll &times; the % you chose &divide; ${typ.units.toFixed(0)}. Each bet is rounded to the nearest 50 cents, at least $1. Line Ledger sizes its own bets exactly this way.` : "1u = 1% of your bankroll until there's a finished week to measure. Each bet is rounded to the nearest 50 cents, at least $1."}</p></details></div>
+      <div id="t-odds" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[1][2]}</p>
+        <div class="tool tgrid">
+          <div class="tin">${field("o-odds", "Odds", "-130", ' placeholder="-130 or +115"')}${field("o-stake", "Stake ($)", "10")}
+            ${field("o-other", "Other side's odds (optional)", "", ' placeholder="for the fair price"')}</div>
+          <div class="tout" id="o-out"></div></div></div>
+      <div id="t-parlay" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[2][2]} Want our picks in one? <a href="${F.parlays || "parlays.html"}">Parlay builder</a></p>
+        <div class="tool tgrid">
+          <div class="tin"><div id="p-legs" class="tlegs"></div>
+            <div class="tleft"><button type="button" class="ps-clear" id="p-add">+ Add a leg</button></div>
+            ${field("p-stake", "Stake ($)", "10")}</div>
+          <div class="tout" id="p-out"></div></div>
+        <p class="ps-fine">Assumes the legs are independent. Legs from the same game move together, and books price those differently.</p></div>
+      <div id="t-player" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[3][2]} <span class="muted" id="l-eyebrow"></span></p>
+        <div class="tool"><div class="trow">
+          <div class="tf grow tcombo"><span id="l-ql">Player</span><input id="l-q" role="combobox" aria-labelledby="l-ql" aria-expanded="false" aria-controls="l-list" aria-autocomplete="list" placeholder="Search a receiver, e.g. Chase" autocomplete="off" spellcheck="false"><ul id="l-list" class="tlist" role="listbox" hidden></ul></div>
+          <div class="tf tline"><span>Line</span><div class="tstep"><button type="button" data-ls="-1" aria-label="Lower line">&minus;</button><input id="l-line" inputmode="decimal" value="4.5" aria-label="Line"><button type="button" data-ls="1" aria-label="Raise line">+</button></div></div></div>
+          <div id="l-ours"></div><div id="l-out"><div class="empty">Loading players&hellip;</div></div></div></div></section>`;
+    const show = (k, push) => {
+      document.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tool === k)));
+      document.querySelectorAll(".tpanel").forEach((s) => { s.hidden = s.id !== `t-${k}`; });
+      store.set("ll-tool", k);
+      if (push) history.replaceState(null, "", `${location.pathname}${k === "player" ? location.search : ""}#${k}`);
+    };
+    document.querySelector(".tswitch").addEventListener("click", (e) => { const b = e.target.closest("[data-tool]"); if (b) show(b.dataset.tool, true); });
+    show(first, false);
+
+    /* bet sizing */
+    const sizeOut = () => {
+      const bank = parseFloat($("s-bank").value.replace(/[^\d.]/g, "")), share = parseFloat(($("s-share").querySelector('[aria-pressed="true"]') || {}).dataset?.share) || 25;
+      if (!(bank > 0)) { $("s-out").innerHTML = `<div class="empty">Enter your bankroll.</div>`; $("s-picks").innerHTML = ""; return; }
+      store.set("ll-bank", String(bank)); store.set("ll-share", String(share));
+      const unit = typ && typ.units > 0 ? bank * share / 100 / typ.units : bank / 100;
+      $("s-out").innerHTML = `<div class="tbig"><small>Your 1 unit</small><b>${money(unit)}</b><span>${(100 * unit / bank).toFixed(2)}% of your bankroll</span></div>
+        <dl class="ps-nums tsizes">${[0.5, 1, 1.5, 2].map((u) => `<div><dt>${u}u bet</dt><dd>${money(roundStake(u * unit))}</dd></div>`).join("")}</dl>`;
+      const open = openNow.filter((p) => p.phase === "open" && p.units);
+      const was = $("s-picks").querySelector("details");
+      $("s-picks").innerHTML = open.length ? `<details class="tmore"${was && was.open ? " open" : ""}><summary>This ${PERIOD.toLowerCase()}'s ${open.length} open picks at your size</summary>
+        <div class="tablebox"><table><thead><tr><th>Player</th><th>Pick</th><th class="num opt">Odds</th><th class="opt">Book</th><th class="num">Size</th><th class="num">Your bet</th><th class="num opt">To win</th></tr></thead><tbody>
+        ${open.map((p) => { const st = roundStake(p.units * unit), d = toDec(p.price);
+          return `<tr><td><b>${esc(nm(p))}</b> <span class="muted">${esc(p.team)}</span></td><td>${p.side} ${p.line} <span class="muted">${esc(MKT(p.prop).short || MKT(p.prop).label)}</span></td><td class="num opt">${odds(p.price)}</td><td class="opt">${esc(abbr(p.book))}</td><td class="num">${p.units.toFixed(1)}u</td><td class="num"><b>${money(st)}</b></td><td class="num opt">${money(st * (d - 1))}</td></tr>`; }).join("")}
+        </tbody></table></div></details>` : "";
+    };
+    $("s-bank").addEventListener("input", sizeOut); $("s-share").addEventListener("click", (e) => { const b = e.target.closest("[data-share]"); if (!b) return;
+      $("s-share").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); sizeOut(); });
+    sizeOut();
+
+    /* odds converter */
+    const oddsOut = () => {
+      const a = parseOdds($("o-odds").value), st = parseFloat($("o-stake").value) || 0, b = parseOdds($("o-other").value);
+      if (a == null) { $("o-out").innerHTML = `<div class="empty">Enter odds like -130 or +115.</div>`; return; }
+      const d = toDec(a), imp = 100 / d;
+      let fair = "";
+      if (b != null) {
+        const ib = 100 / toDec(b), hold = imp + ib - 100, fp = 100 * imp / (imp + ib);
+        fair = `<dl class="ps-nums tfair"><div><dt>Fair chance</dt><dd>${fp.toFixed(1)}%</dd></div><div><dt>Fair price</dt><dd>${odds(toAm(100 / fp))}</dd></div>
+          <div><dt>Book's cut</dt><dd>${hold.toFixed(1)}%<small>${hold > 6 ? "high" : hold > 3.5 ? "normal for props" : "low"}</small></dd></div></dl>`;
+      }
+      $("o-out").innerHTML = `<div class="tbig"><small>Win chance it implies</small><b>${imp.toFixed(1)}%</b><span>win this often to break even &middot; decimal ${d.toFixed(2)}</span></div>
+        <dl class="ps-nums"><div><dt>To win</dt><dd>${money(st * (d - 1))}</dd></div><div><dt>Total back</dt><dd>${money(st * d)}</dd></div></dl>${fair}`;
+    };
+    ["o-odds", "o-stake", "o-other"].forEach((id) => $(id).addEventListener("input", oddsOut));
+    oddsOut();
+
+    /* parlay calculator */
+    const pl = ["-110", "-110"];
+    const legRows = () => { $("p-legs").innerHTML = pl.map((v, i) => `<div class="tleg"><label class="tf grow"><span>Leg ${i + 1} odds</span><input data-pl="${i}" inputmode="decimal" value="${esc(v)}" autocomplete="off"></label>
+        ${pl.length > 2 ? `<button type="button" class="ps-x" data-pdel="${i}" aria-label="Remove leg ${i + 1}">&times;</button>` : ""}</div>`).join("");
+      $("p-add").disabled = pl.length >= 10; };
+    const parOut = () => {
+      const ds = pl.map(parseOdds), st = parseFloat($("p-stake").value) || 0;
+      if (ds.some((x) => x == null)) { $("p-out").innerHTML = `<div class="empty">Enter odds for every leg (like -110 or +150).</div>`; return; }
+      const d = ds.reduce((t, a) => t * toDec(a), 1);
+      $("p-out").innerHTML = `<div class="tbig"><small>${pl.length}-leg parlay</small><b>${odds(toAm(d))}</b><span>decimal ${d.toFixed(2)}</span></div>
+        <dl class="ps-nums"><div><dt>To win</dt><dd>${money(st * (d - 1))}</dd></div><div><dt>Total back</dt><dd>${money(st * d)}</dd></div>
+        <div><dt>Hits about</dt><dd>${(100 / d).toFixed(1)}%<small>1 in ${d.toFixed(1)}, at the books' prices</small></dd></div></dl>`;
+    };
+    $("p-legs").addEventListener("input", (e) => { const i = e.target.dataset.pl; if (i != null) { pl[+i] = e.target.value; parOut(); } });
+    $("p-legs").addEventListener("click", (e) => { const b = e.target.closest("[data-pdel]"); if (b) { pl.splice(+b.dataset.pdel, 1); legRows(); parOut(); } });
+    $("p-add").addEventListener("click", () => { if (pl.length < 10) { pl.push("-110"); legRows(); parOut(); $("p-legs").querySelector(`[data-pl="${pl.length - 1}"]`).focus(); } });
+    $("p-stake").addEventListener("input", parOut);
+    legRows(); parOut();
+
+    /* player lookup (players.js is loaded only here) */
+    const sc = document.createElement("script");
+    sc.src = "players.js?v=" + (((document.querySelector('script[src^="data.js"]') || {}).src || "").split("v=")[1] || "");
+    sc.onload = () => lookup(window.PLAYERS);
+    sc.onerror = () => { $("l-out").innerHTML = `<div class="empty">The player list isn't available right now.</div>`; };
+    document.body.appendChild(sc);
+  }
+
+  function lookup(PL) {
+    if (!PL || !PL.players.length) { $("l-out").innerHTML = `<div class="empty">No player games yet this season.</div>`; return; }
+    $("l-eyebrow").innerHTML = `Receptions &middot; ${PL.season} &middot; through ${PERIOD} ${PL.through}`;
+    const label = (x) => `${x.full} (${x.team} ${x.pos})`;
+    const byPid = Object.fromEntries(PL.players.map((x) => [x.id, x]));
+    const ours = (x) => openNow.filter((p) => p.prop === "receptions" && p.pid === x.id && p.phase !== "final");
+    let who = null;
+    const lineVal = () => { const v = parseFloat($("l-line").value); return isFinite(v) ? v : null; };
+    const draw = () => {
+      if (!who) { $("l-ours").innerHTML = ""; $("l-out").innerHTML = `<div class="empty">Type a player's name and pick him from the list.</div>`; return; }
+      const L = lineVal(), gs = who.g;
+      if (L == null) { $("l-out").innerHTML = `<div class="empty">Enter a line, like 4.5.</div>`; return; }
+      const rate = (g) => { const o = g.filter((x) => x[3] > L).length, u = g.filter((x) => x[3] < L).length; return { o, u, n: g.length }; };
+      const cell = (t, g) => { const r = rate(g); return `<div><small>${t}</small><b>${r.n ? Math.round(100 * r.o / r.n) + "%" : "&ndash;"}</b><span class="muted">over in ${r.o} of ${r.n}${r.n - r.o - r.u ? ` &middot; ${r.n - r.o - r.u} push` : ""}</span></div>`; };
+      const avg = (k) => gs.reduce((t, x) => t + x[k], 0) / gs.length;
+      const mine = ours(who);
+      $("l-ours").innerHTML = mine.map((p) => `<a class="tours" href="${linkTo(p)}"><span class="eyebrow">Our pick this ${PERIOD.toLowerCase()}</span><b>${p.side} ${p.line} receptions</b><span class="mono">${odds(p.price)} ${esc(abbr(p.book))}${p.units ? ` &middot; ${p.units.toFixed(1)}u` : ""}</span><i aria-hidden="true">&rsaquo;</i></a>`).join("");
+      // the chart: one bar per game with its count on top, the line drawn across; over the line = accent, else grey
+      const W = 640, H = 210, pad = 24, top = Math.max(L + 1, ...gs.map((x) => x[3])) * 1.15;
+      const step = (W - 2 * pad) / gs.length, bw = Math.min(44, step - 8);
+      const X = (i) => pad + (i + 0.5) * step, Y = (v) => H - 28 - (H - 28 - 16) * v / top;
+      const bars = gs.map((x, i) => { const cls = x[3] > L ? "tb-o" : x[3] < L ? "tb-u" : "tb-p", h = Math.max(2, Y(0) - Y(x[3]));
+        return `<g class="${cls}"><title>${PERIOD} ${x[0]} ${x[2] ? "vs" : "@"} ${x[1]}: ${x[3]} catches on ${x[4]} targets</title>
+          <rect x="${X(i) - step / 2}" y="0" width="${step}" height="${H}" fill="transparent"/>
+          <rect x="${X(i) - bw / 2}" y="${Y(0) - h}" width="${bw}" height="${h}" rx="4"/><text class="tb-v" x="${X(i)}" y="${Y(0) - h - 6}">${x[3]}</text>
+          <text class="tb-x" x="${X(i)}" y="${H - 8}">${x[2] ? "" : "@"}${esc(x[1])}</text></g>`; }).join("");
+      $("l-out").innerHTML = `<div class="tplayer"><h3>${esc(who.full)}</h3><span class="muted">${esc(who.team)} ${esc(who.pos)} &middot; ${avg(3).toFixed(1)} catches, ${avg(4).toFixed(1)} targets a game</span></div>
+        <div class="rc-grid">${cell("Last 5", gs.slice(-5))}${cell("Last 10", gs.slice(-10))}${cell("Season", gs)}<div><small>Average</small><b>${avg(3).toFixed(1)}</b><span class="muted">vs line ${L}</span></div></div>
+        <figure class="tchart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Catches per game against the line ${L}">
+          <line class="tb-base" x1="${pad / 2}" x2="${W - pad / 2}" y1="${Y(0)}" y2="${Y(0)}"/>${bars}
+          <line class="tb-line" x1="${pad / 2}" x2="${W - pad / 2}" y1="${Y(L)}" y2="${Y(L)}"/></svg>
+          <figcaption><span class="kk"><span class="key l"></span>Line ${L}</span><span class="kk"><span class="key o"></span>Over the line</span><span class="kk"><span class="key u"></span>Under the line</span><span class="kk muted">Tap a bar for the game</span></figcaption></figure>
+        <div class="tablebox"><table><thead><tr><th>${PERIOD}</th><th>Opponent</th><th class="num">Catches</th><th class="num opt">Targets</th><th class="num opt">Snaps</th><th>vs ${L}</th></tr></thead><tbody>
+          ${gs.slice().reverse().map((x) => `<tr><td>${x[0]}</td><td>${x[2] ? "vs" : "@"} ${esc(x[1])}</td><td class="num"><b>${x[3]}</b></td><td class="num opt">${x[4]}</td><td class="num opt">${x[5] == null ? "&ndash;" : x[5] + "%"}</td>
+            <td>${x[3] > L ? '<b class="up">Over</b>' : x[3] < L ? '<span class="muted">Under</span>' : '<span class="muted">Push</span>'}</td></tr>`).join("")}</tbody></table></div>
+        <p class="ps-fine">Past games, not a prediction: injuries, trades and a new quarterback change what a player does. Stats: nflverse.</p>`;
+    };
+    const setUrl = () => { if (who) history.replaceState(null, "", `?player=${who.id}&line=${encodeURIComponent($("l-line").value)}#player`); };
+    const choose = (x, keepLine) => {
+      who = x;
+      if (x && !keepLine) { const mine = ours(x); $("l-line").value = mine.length ? mine[0].line : Math.max(0.5, Math.round(x.g.reduce((t, g) => t + g[3], 0) / x.g.length) - 0.5); }
+      setUrl(); draw();
+    };
+    // the search box: every word you type must start a word of the name (or match the team); picks this week first
+    const fold = (t) => t.toLowerCase().normalize("NFD").replace(/\p{M}|['.]/gu, "");
+    const words = PL.players.map((x) => ({ x, w: fold(`${x.full} ${x.name}`).split(/[\s-]+/), team: x.team.toLowerCase() }));
+    const picked = new Set(openNow.filter((p) => p.prop === "receptions").map((p) => p.pid));
+    let hits = [], hi = 0;
+    const list = $("l-list"), box = $("l-q");
+    const close = () => { list.hidden = true; box.setAttribute("aria-expanded", "false"); box.removeAttribute("aria-activedescendant"); };
+    const paint = () => {
+      list.innerHTML = hits.length ? hits.map(({ x }, i) => `<li role="option" id="lo-${i}" data-i="${i}" aria-selected="${i === hi}">${tm(x.team)}<b>${esc(x.full)}</b><span class="muted">${esc(x.pos)}</span>
+          ${picked.has(x.id) ? `<em class="tpk">our pick</em>` : ""}<span class="mono muted tct">${x.rec} rec</span></li>`).join("")
+        : `<li class="tnone">No receiver matches. Try a last name.</li>`;
+      list.hidden = false; box.setAttribute("aria-expanded", "true");
+      if (hits.length) box.setAttribute("aria-activedescendant", `lo-${hi}`);
+    };
+    const search = () => {
+      const q = fold(box.value).split(/[\s-]+/).filter(Boolean);
+      if (!q.length) { close(); return; }
+      hits = words.filter(({ w, team }) => q.every((t) => team === t || w.some((y) => y.startsWith(t))))
+        .sort((a, b) => picked.has(b.x.id) - picked.has(a.x.id) || b.x.rec - a.x.rec).slice(0, 8);
+      hi = 0; paint();
+    };
+    const pick = (i) => { const h = hits[i]; if (!h) return; box.value = label(h.x); close(); choose(h.x); box.blur(); };
+    box.addEventListener("input", search);
+    box.addEventListener("focus", () => { if (box.value && who && box.value === label(who)) box.select(); else if (box.value) search(); });
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { if (list.hidden) search(); else if (hits.length) { hi = (hi + (e.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length; paint(); } e.preventDefault(); }
+      else if (e.key === "Enter") { pick(hi); e.preventDefault(); }
+      else if (e.key === "Escape") close();
+    });
+    list.addEventListener("mousedown", (e) => { const li = e.target.closest("[data-i]"); if (li) { e.preventDefault(); pick(+li.dataset.i); } });
+    box.addEventListener("blur", () => setTimeout(close, 120));
+    $("l-line").addEventListener("input", () => { setUrl(); draw(); });
+    document.querySelector(".tstep").addEventListener("click", (e) => { const b = e.target.closest("[data-ls]"); if (!b) return;
+      $("l-line").value = Math.max(0.5, (lineVal() ?? 4.5) + +b.dataset.ls); setUrl(); draw(); });
+    const q = new URLSearchParams(location.search), start = byPid[q.get("player")];
+    if (start) { $("l-q").value = label(start); if (q.get("line")) $("l-line").value = q.get("line"); choose(start, !!q.get("line")); }
+    else draw();
+  }
+
   setTimeout(() => { reveal(); countUp(); }, 0);
-  const PAGES = { home, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
+  const PAGES = { home, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
   (PAGES[page] || home)();
   setInterval(() => { if (legs.length && syncPhases()) drawChip(); }, 30000);   // a leg whose game started drops out
   drawChip();

@@ -893,3 +893,131 @@ html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   .ms-in { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
   #pchip { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* ---- Tools page: bet sizing, odds converter, parlay calculator, player lookup */
+.tjump { position: static; }
+.tool { display: grid; gap: 16px; padding: 18px; border-radius: 16px; background: var(--ticket); border: 1px solid var(--rule); }
+.tgrid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
+.tin { display: grid; gap: 12px; align-content: start; }
+.tout { display: grid; gap: 14px; align-content: start; }
+.tf { display: grid; gap: 6px; }
+.tf > span { font: 600 10.5px/1.2 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tf input, .tf select { font: 600 16px/1.2 var(--mono); color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; padding: 11px 12px; width: 100%; min-width: 0; }
+.tf input:focus, .tf select:focus { border-color: var(--ink); outline: none; }
+.tbig { display: grid; gap: 4px; padding: 14px 16px; border-radius: 12px; background: var(--soft); }
+.tbig small { font: 600 10.5px/1.2 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tbig b { font: 700 40px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); }
+.tbig span { font-size: 13px; color: var(--muted); }
+.tout .ps-nums { border-top: 0; padding-top: 0; }
+.tsizes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tfair { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.tpicks { display: grid; gap: 10px; }
+.tlegs { display: grid; gap: 10px; }
+.tleg { display: flex; align-items: end; gap: 8px; }
+.tleg .ps-x { padding-bottom: 12px; }
+.grow { flex: 1; }
+.tleft { display: flex; }
+.ps-clear:disabled { opacity: .45; cursor: default; }
+.trow { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.tline { width: 150px; }
+.tstep { display: flex; gap: 6px; }
+.tstep input { text-align: center; }
+.tstep button { flex: none; width: 40px; border: 1px solid var(--rule); background: transparent; color: var(--ink); border-radius: 10px; font: 600 18px/1 var(--mono); cursor: pointer; }
+.tstep button:hover { border-color: var(--ink); }
+.tours { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 12px 14px; border-radius: 12px; text-decoration: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.tours .eyebrow { width: 100%; color: var(--ink); }
+.tours i { margin-left: auto; font-style: normal; font-size: 20px; }
+.tplayer { display: grid; gap: 4px; }
+.tplayer h3 { font-size: 30px; text-transform: uppercase; }
+.rc-grid span.muted { font-size: 12px; }
+.tchart { margin: 0; display: grid; gap: 8px; }
+.tchart svg { width: 100%; height: auto; display: block; }
+.tchart rect { fill: var(--rule); }
+.tchart .tb-o rect:last-of-type { fill: var(--accent); }
+.tchart .tb-u rect:last-of-type, .tchart .tb-p rect:last-of-type { fill: color-mix(in srgb, var(--muted) 45%, transparent); }
+.tchart g rect:first-of-type { fill: transparent; }
+.tchart g:hover rect:last-of-type { stroke: var(--ink); stroke-width: 2; }
+.tchart text { font: 600 13px/1 var(--mono); fill: var(--ink); text-anchor: middle; }
+.tchart .tb-x { font: 500 11px/1 var(--body); fill: var(--muted); }
+.tchart .tb-ll { font: 600 11px/1 var(--body); fill: var(--ink); text-anchor: end; }
+.tb-line { stroke: var(--ink); stroke-width: 2; stroke-dasharray: 6 5; }
+.tb-base { stroke: var(--rule); stroke-width: 1; }
+.tchart figcaption { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tchart .key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.tchart .key.o { background: var(--accent); } .tchart .key.u { background: color-mix(in srgb, var(--muted) 45%, transparent); margin-left: 8px; }
+@media (max-width: 780px) { .tgrid { grid-template-columns: 1fr; } .tsizes { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tline { width: 100%; } }
+.tmore summary { cursor: pointer; font: 600 14px/1.3 var(--body); padding: 12px 14px; border: 1px solid var(--rule); border-radius: 12px; background: var(--ticket); }
+.tmore summary:hover { border-color: var(--ink); }
+.tmore[open] summary { margin-bottom: 10px; }
+#app > section, .tjump, .tool, .tin, .tout, .tf { min-width: 0; }
+.tjump { flex-wrap: wrap; overflow: visible; }
+.tchart .key.l { width: 16px; height: 0; border-top: 2px dashed var(--ink); border-radius: 0; }
+.tchart .key.o { margin-left: 8px; }
+.tool > *, #l-out > * { min-width: 0; }
+.tbox { gap: 14px; }
+.tswitch { position: sticky; top: 64px; z-index: 5; display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--soft); border: 1px solid var(--rule); overflow-x: auto; scrollbar-width: none; }
+.tswitch::-webkit-scrollbar { display: none; }
+.tswitch button { flex: 1 0 auto; border: 0; background: transparent; color: var(--muted); font: 700 14px/1 var(--body); padding: 12px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap; }
+.tswitch button:hover { color: var(--ink); }
+.tswitch button[aria-selected="true"] { background: var(--ticket); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
+.tpanel { display: grid; gap: 14px; }
+.tpanel[hidden] { display: none; }
+.tsub { color: var(--muted); }
+.thow summary, .tmore summary { cursor: pointer; font: 600 13.5px/1.3 var(--body); }
+.thow summary { color: var(--muted); }
+.thow p { margin-top: 8px; font-size: 13.5px; color: var(--muted); }
+.tsizes dt { white-space: nowrap; }
+@media (max-width: 680px) { .tswitch { top: 8px; } .tswitch button { padding: 11px 10px; font-size: 13px; } }
+.tswitch button[aria-selected="true"] { background: var(--board-text); color: #1b1203; box-shadow: none; }
+.tchart figcaption { gap: 6px 16px; }
+.tchart .kk { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tchart .key.o, .tchart .key.u { margin-left: 0; }
+@media (max-width: 680px) { .tool th, .tool td { padding: 10px 8px; } .tool { padding: 14px; } }
+
+/* ==== Refresh (Nov 2026): calmer labels, text in the body font, numbers in mono, a little motion.
+   Pick cards keep their own styles.  To undo the whole refresh, delete from here to the end of the file. ==== */
+.eyebrow, .clvgrid small, .rc-grid small, .rc-curve figcaption, .rcx-name, .rcx-stats dt, .rcx-best em, .ps-nums dt,
+.tf > span, .tbig small, .pickers span, .phase-rec em, .wk-m em, .chart figcaption, .navsheet .eyebrow {
+  font: 500 12.5px/1.3 var(--body); letter-spacing: 0; text-transform: none; }
+.rcx-eyebrow { font: 600 13px/1.2 var(--body); letter-spacing: 0; text-transform: none; }
+th { font: 600 12px/1.2 var(--body); letter-spacing: 0; text-transform: none; }
+.tote span { font-size: 13px; }
+.tote em.n { font-style: normal; color: var(--board-text); }
+.tote div[title] { cursor: help; }
+.share, .mtoggle { letter-spacing: 0; text-transform: none; font-size: 12.5px; }
+/* text you type or pick reads as text; only numbers are monospaced */
+.tf input, .tf select, .pickers select { font-family: var(--body); font-variant-numeric: tabular-nums; }
+#s-bank, #o-odds, #o-stake, #o-other, #p-stake, .tlegs input, #l-line { font-family: var(--mono); }
+/* phones: the season / week row scrolls sideways - fade its edge so that's obvious */
+@media (max-width: 680px) { .tb-l { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); } }
+/* motion: switching tools, new results, opening menus */
+@keyframes ll-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.tpanel:not([hidden]), #l-out > *, .navpop, .ms-in, .tmore[open] .tablebox, .thow[open] p { animation: ll-fade .18s ease both; }
+button, a, .tf input, .tf select { transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease; }
+@media (prefers-reduced-motion: reduce) { .tpanel:not([hidden]), #l-out > *, .navpop, .ms-in, .tmore[open] .tablebox, .thow[open] p { animation: none; } }
+/* player search: its own results list (replaces the browser's datalist) */
+.tcombo { position: relative; }
+.tlist { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; margin: 6px 0 0; padding: 6px; list-style: none; display: grid; gap: 2px;
+  background: var(--ticket); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, .28); animation: ll-fade .14s ease both; }
+.tlist li { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 14.5px; }
+.tlist li b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tlist li[aria-selected="true"], .tlist li[data-i]:hover { background: var(--soft); }
+.tlist .tct { margin-left: auto; font-size: 12.5px; white-space: nowrap; }
+.tlist .tpk { font: 600 11.5px/1 var(--body); font-style: normal; color: #1b1203; background: var(--accent); padding: 4px 7px; border-radius: 999px; white-space: nowrap; }
+.tlist .tnone { color: var(--muted); cursor: default; }
+/* "a typical week risks" as buttons */
+.tseg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--paper); border: 1px solid var(--rule); }
+.tseg button { flex: 1; border: 0; background: transparent; color: var(--muted); font: 600 15px/1 var(--mono); padding: 11px 0; border-radius: 9px; cursor: pointer; }
+.tseg button:hover { color: var(--ink); }
+.tseg button[aria-pressed="true"] { background: var(--board-text); color: #1b1203; }
+.tnote { font-size: 12.5px; color: var(--muted); }
+.tlist { grid-template-columns: minmax(0, 1fr); }
+.tlist li { min-width: 0; }
+.tlist li b { flex: 0 1 auto; }
+@media (max-width: 480px) { .tlist .tct { display: none; } }
+.tlist[hidden] { display: none; }
+/* ticket stub buttons stay on one line ("+ Parlay" never splits); the barcode gives up room first */
+.stub-r > * { white-space: nowrap; flex: none; }
+.stub-r { min-width: 0; flex: 1 1 auto; }
+.stub-r .barcode { flex: 0 1 110px; width: 0 !important; min-width: 0; margin-left: auto; }   /* inline width would hold the ticket open */
