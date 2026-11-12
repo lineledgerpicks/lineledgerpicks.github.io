@@ -92,7 +92,7 @@
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, everything else in the More sheet
   const tabsFit = places.filter(([id]) => id !== "tools"), toolsLink = places.find(([id]) => id === "tools");
-  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages">${tabsFit.map(([id, link, label, ic]) =>
+  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${tabsFit.map(([id, link, label, ic]) =>
       `<a href="${link}"${cur(id)}>${svg(ic)}<span>${esc(id === "home" ? PERIOD : label)}</span>${openBadge(id)}</a>`).join("")}
       <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" || here === "tools" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
@@ -103,7 +103,18 @@
   const navbar = $("navbar");
   const onScroll = () => navbar.classList.toggle("scrolled", scrollY > 8);
   addEventListener("scroll", onScroll, { passive: true }); onScroll();
-  const setSheet = (open) => { $("msheet").hidden = !open; $("bmore").setAttribute("aria-expanded", String(open)); document.body.classList.toggle("sheet-open", open); };
+  // phones: a glass bubble sits under the current tab, and slides to More while that menu is open (no animation
+  // between pages: it stuttered on Safari, so tabs just open their page)
+  const bbar = document.querySelector(".bbar"), glass = bbar.querySelector(".bb-glass");
+  const bbHome = () => bbar.querySelector('a[aria-current="page"], #bmore[aria-current="page"]');
+  const moveGlass = (el) => { if (!el) { glass.style.opacity = "0"; return; }
+    glass.style.opacity = "1"; glass.style.setProperty("--x", `${el.offsetLeft}px`); glass.style.setProperty("--w", `${el.offsetWidth}px`); };
+  moveGlass(bbHome());
+  requestAnimationFrame(() => bbar.classList.add("ready"));        // no slide on first paint
+  addEventListener("resize", () => moveGlass($("msheet").hidden ? bbHome() : $("bmore")));
+  const setSheet = (open) => { const was = !$("msheet").hidden;
+    $("msheet").hidden = !open; $("bmore").setAttribute("aria-expanded", String(open)); document.body.classList.toggle("sheet-open", open);
+    if (was !== open) moveGlass(open ? $("bmore") : bbHome()); };
   $("bmore").addEventListener("click", (e) => { e.stopPropagation(); setSheet($("msheet").hidden); });
   const closeMenus = () => { setSheet(false); document.querySelectorAll(".navmenu[open]").forEach((d) => d.removeAttribute("open")); };
   document.addEventListener("click", (e) => { if (!e.target.closest(".navmenu, .ms-in, #bmore")) closeMenus(); });
