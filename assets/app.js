@@ -996,12 +996,15 @@
 
   // a typical week: what the model's picks of the last 3 finished weeks added up to, in units (the same rule the
   // model uses for its own unit)
-  function typicalWeek() {
+  // keep: which picks count (all, or only the ones a visitor bets, e.g. Sharp agrees)
+  function typicalWeek(keep = () => true) {
     const wk = {};
     allPicks.forEach((p) => { const k = `${p.season}-${String(p.week).padStart(2, "0")}`; (wk[k] = wk[k] || []).push(p); });
     const done = Object.keys(wk).sort().filter((k) => wk[k].every((p) => p.phase === "final")).slice(-3);
     if (!done.length) return null;
-    return { units: done.reduce((t, k) => t + wk[k].reduce((u, p) => u + (p.units || 0), 0), 0) / done.length, weeks: done.length };
+    const ps = done.map((k) => wk[k].filter(keep));
+    return { units: ps.reduce((t, g) => t + g.reduce((u, p) => u + (p.units || 0), 0), 0) / done.length,
+             picks: Math.round(ps.reduce((t, g) => t + g.length, 0) / done.length), weeks: done.length };
   }
 
   // the stake you'd actually type at the book: to the nearest 50 cents, never under $1 (how Line Ledger rounds its own)
@@ -1013,7 +1016,9 @@
 
   function toolsPage() {
     hero("Free tools", "Bettor's <em>toolkit</em>", "Nothing you type here leaves your browser.");
-    const typ = typicalWeek();
+    // betting Sharp agrees only means fewer picks a week, so each unit can be bigger for the same weekly risk
+    const typAll = typicalWeek(), typSharp = typicalWeek((p) => p.sharp === "agrees");
+    const typNow = () => sharpOnly() && typSharp && typSharp.units > 0 ? typSharp : typAll;
     const bank0 = parseFloat(store.get("ll-bank")) || 1000, share0 = parseFloat(store.get("ll-share")) || 25;
     const q0 = new URLSearchParams(location.search), h0 = location.hash.slice(1);
     const first = q0.get("player") ? "player" : TOOLS.some(([k]) => k === h0) ? h0 : TOOLS.some(([k]) => k === store.get("ll-tool")) ? store.get("ll-tool") : "sizing";
@@ -1025,7 +1030,7 @@
             <div class="tf"><span>A typical week risks</span><div class="tseg" id="s-share" role="group" aria-label="A typical week risks">${[10, 15, 25, 35].map((v) => `<button type="button" data-share="${v}" aria-pressed="${v === share0}">${v}%</button>`).join("")}</div><small class="tnote">25% is what we use</small></div></div>
           <div class="tout" id="s-out"></div></div>
         <div id="s-picks"></div>
-        <details class="thow"><summary>How is this worked out?</summary><p>${typ ? `A typical week of our picks adds up to about <b>${typ.units.toFixed(0)}u</b> (the last ${typ.weeks} finished weeks). So 1u = your bankroll &times; the % you chose &divide; ${typ.units.toFixed(0)}. Each bet is rounded to the nearest 50 cents, at least $1. Line Ledger sizes its own bets exactly this way.` : "1u = 1% of your bankroll until there's a finished week to measure. Each bet is rounded to the nearest 50 cents, at least $1."}</p></details></div>
+        <details class="thow"><summary>How is this worked out?</summary><p id="s-how"></p></details></div>
       <div id="t-odds" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[1][2]}</p>
         <div class="tool tgrid">
           <div class="tin">${field("o-odds", "Odds", "-130", ' placeholder="-130 or +115"')}${field("o-stake", "Stake ($)", "10")}
@@ -1057,9 +1062,12 @@
       const bank = parseFloat($("s-bank").value.replace(/[^\d.]/g, "")), share = parseFloat(($("s-share").querySelector('[aria-pressed="true"]') || {}).dataset?.share) || 25;
       if (!(bank > 0)) { $("s-out").innerHTML = `<div class="empty">Enter your bankroll.</div>`; $("s-picks").innerHTML = ""; return; }
       store.set("ll-bank", String(bank)); store.set("ll-share", String(share));
+      const typ = typNow(), sharp = typ === typSharp && sharpOnly();
       const unit = typ && typ.units > 0 ? bank * share / 100 / typ.units : bank / 100;
-      $("s-out").innerHTML = `<div class="tbig"><small>Your 1 unit</small><b>${money(unit)}</b><span>${(100 * unit / bank).toFixed(2)}% of your bankroll</span></div>
+      $("s-out").innerHTML = `<div class="tbig"><small>Your 1 unit${sharp ? " &middot; Sharp agrees only" : ""}</small><b>${money(unit)}</b><span>${(100 * unit / bank).toFixed(2)}% of your bankroll${sharp ? ` &middot; bigger because you're betting about ${typ.picks} picks a week instead of ${typAll.picks}` : ""}</span></div>
         <dl class="ps-nums tsizes">${[0.5, 1, 1.5, 2].map((u) => `<div><dt>${u}u bet</dt><dd>${money(roundStake(u * unit))}</dd></div>`).join("")}</dl>`;
+      $("s-how").innerHTML = typ ? `A typical week of ${sharp ? "our Sharp-agrees picks" : "our picks"} adds up to about <b>${typ.units.toFixed(0)}u</b> over about ${typ.picks} picks (the last ${typ.weeks} finished weeks). So 1u = your bankroll &times; the % you chose &divide; ${typ.units.toFixed(0)}, and a typical week of the picks you bet comes to that %.${sharp ? " The same weekly risk spread over fewer bets swings more from week to week." : ""} Each bet is rounded to the nearest 50 cents, at least $1. Line Ledger sizes its own bets this way (on all its picks).`
+        : "1u = 1% of your bankroll until there's a finished week to measure. Each bet is rounded to the nearest 50 cents, at least $1.";
       unitNow = unit; drawPicks();
     };
     // this week's open picks at the visitor's size: a to-do list with the book's bet button, a Sharp-agrees filter and
@@ -1084,7 +1092,7 @@
           </tbody></table></div>` : `<div class="empty">${pool.length ? "Every pick here is marked as bet." : "No open Sharp-agrees picks right now."}</div>`}
         <p class="ps-fine">Tick a pick after you place it. Ticks stay in this browser on this device only (nothing is sent anywhere), and each ${PERIOD.toLowerCase()} starts fresh. Bet buttons open the book; nothing is placed for you.</p>`;
     };
-    $("s-picks").addEventListener("click", (e) => { const b = e.target.closest("[data-sh]"); if (b) { store.set("ll-sharponly", b.dataset.sh); drawPicks(); } });
+    $("s-picks").addEventListener("click", (e) => { const b = e.target.closest("[data-sh]"); if (b) { store.set("ll-sharponly", b.dataset.sh); sizeOut(); } });
     $("s-picks").addEventListener("change", (e) => {
       if (e.target.id === "s-hide") { store.set("ll-hidebet", e.target.checked ? "1" : "0"); drawPicks(); return; }
       const s = e.target.dataset.mybet; if (s) { setBet(s, e.target.checked); drawPicks(); } });
