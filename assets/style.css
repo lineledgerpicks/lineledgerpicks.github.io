@@ -1077,3 +1077,60 @@ button, a, .tf input, .tf select { transition: background-color .15s ease, borde
   .tpk td b { overflow-wrap: anywhere; }
   .tpk .tbtn .betlink { padding: 7px 8px; font-size: 12px; }
 }
+
+/* ==== Nov 13: one-row control bar, shorter page headers, the model's parlays front and center ==== */
+/* control bar: [Week 10 · 2026] [search......] [Filters]; everything else is in the Filters panel */
+.ctl .toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+.ctl .toolbar .pickers { flex: none; }
+.ctl .toolbar .pickers select { padding-left: 14px; }
+.ctl .search { flex: 1 1 auto; min-width: 0; }
+.ctl .search input, .ctl .search input:focus, .ctl .search input:not(:placeholder-shown) { width: 100%; }
+.ctl .fbtn { flex: none; }
+.fp-row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.fp-l { width: 56px; flex: none; font-size: 12.5px; color: var(--muted); }
+.fpanel .filters { flex: 1; }
+@media (max-width: 680px) {
+  .ctl .toolbar { flex-wrap: nowrap; }
+  .ctl .fbtn > span { display: none; }
+  .ctl .toolbar .pickers select { font-size: 15px; }
+  .fp-l { width: 100%; }
+}
+/* page headers: the home page keeps its big header; every other page gets a short one */
+body:not([data-page="home"]) .board .wrap { padding-block: 14px 22px; }
+body:not([data-page="home"]) .hero { gap: 8px; }
+body:not([data-page="home"]) .hero h1 { font-size: clamp(32px, 5vw, 48px); max-width: none; }
+body:not([data-page="home"]) .hero p { font-size: 15px; max-width: 60ch; }
+.hero p:empty { display: none; }
+body:not([data-page="home"]) main { padding-top: 28px; gap: 40px; }
+/* the model's parlays: a slip per book on the dark header */
+.hero-pm { margin-top: 6px; }
+.pm-card.big { background: linear-gradient(160deg, #1d2c4b, #121c31); border: 1px solid #2c3b5c; border-top: 1px solid #3a4c74; color: #e6ebf3;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .35); padding: 18px; gap: 14px; }
+.pm-card.big .pm-book { color: #fff; font-size: 26px; display: inline-flex; align-items: center; gap: 10px; }
+.pm-card.big .bkdot { width: 10px; height: 10px; }
+.pm-pay { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.pm-pay b { font: 700 46px/1 var(--mono); color: var(--board-text); letter-spacing: -.02em; }
+.pm-pay span { font-size: 13.5px; color: #aeb9cc; }
+.pm-card:not(.big) .pm-pay b { font-size: 30px; color: var(--ink); }
+.pm-card:not(.big) .pm-pay span { color: var(--muted); }
+/* the legs as one ticket: a rail joins them */
+.pm-legs { position: relative; }
+.pm-legs li { grid-template-areas: "r who odds"; align-items: center; }
+.pm-legs li > a { display: grid; gap: 3px; color: inherit; }
+.pm-legs li > a b { font-weight: 700; }
+.pm-legs li > a span { font-size: 12.5px; color: var(--muted); }
+.pm-card.big .pm-legs li { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .08); }
+.pm-card.big .pm-legs li > a span, .pm-card.big .pm-legs li > .mono small { color: #aeb9cc; }
+.pm-card.big .pm-r:empty { background: var(--board-text); width: 8px; height: 8px; border-radius: 50%; justify-self: center; box-shadow: 0 0 0 4px rgba(243, 217, 164, .15); }
+.pm-meters { display: grid; gap: 8px; }
+.pm-meter { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 12.5px; }
+.pm-meter span { color: var(--muted); }
+.pm-card.big .pm-meter span { color: #aeb9cc; }
+.pm-meter b { font: 600 13px/1 var(--mono); }
+.pm-meter i { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: rgba(127, 140, 160, .25); position: relative; overflow: hidden; }
+.pm-meter i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v); border-radius: 999px; background: var(--muted); }
+.pm-meter.model i::after { background: var(--board-text); }
+.pm-card.big footer { color: #8f9bb3; }
+.tpl-all { font-size: 13.5px; font-weight: 600; text-decoration: none; color: var(--accent); margin-top: 2px; }
+.pm-legs li { grid-template-columns: 34px minmax(0, 1fr) auto; }
+.pm-r { font-size: 11px; text-align: center; }

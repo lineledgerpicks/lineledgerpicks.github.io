@@ -29,8 +29,8 @@
   const wl = (r) => r && r.n ? `${r.W}-${r.L}${r.P ? "-" + r.P : ""}` : "0-0";
   const SHARP = { agrees: "Sharp agrees", against: "Sharp against", neutral: "Sharp neutral", "no line": "No sharp line" };
   const SEAL = { W: "Win", L: "Loss", P: "Push", VOID: "Void" };
-  const sharpChip = (s, atClose) => s ? `<span class="chip ${s === "no line" ? "noline" : s}" title="Pinnacle's ${atClose ? "closing" : "latest"} line">${SHARP[s] || esc(s)}${atClose ? " &middot; close" : ""}</span>` : "";
-  const abbr = (b) => ({ DraftKings: "DK", FanDuel: "FD", Pinnacle: "PIN" }[b] || b || "");
+  const sharpChip = (s, atClose) => s ? `<span class="chip ${s === "no line" ? "noline" : s}" title="Where sharp money leans${atClose ? " at the close" : " right now"}">${SHARP[s] || esc(s)}${atClose ? " &middot; close" : ""}</span>` : "";
+  const abbr = (b) => ({ DraftKings: "DK", FanDuel: "FD" }[b] || b || "");
 
   /* team colors: badges and ticket bands (colors only - no logos) */
   const TEAMS = D.teams || {};
@@ -81,14 +81,14 @@
     more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>' };
   const svg = (k) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
   const places = (SPORT.markets || []).length
-    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["open", F.open, "Open", "open"], ["results", F.results, "Results", "results"],
+    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["results", F.results, "Results", "results"],
        ...(F.parlays ? [["parlays", F.parlays, "Parlays", "parlays"]] : []), ["tools", `tools.html${keep}`, "Tools", "tools"]]
     : [["soon", href(F.home), "Overview", "week"]];
   const records = [...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).label]), ["clv", `clv.html${keep}`, "Closing line value"]];
   const how = ["method", `method.html${keep}`, "How it works"];
   const here = page === "market" ? `m:${pageMarket}` : page;
   const cur = (id) => id === here ? ' aria-current="page"' : "";
-  const openBadge = (id) => id === "open" ? `<span class="badge" data-open-count hidden></span>` : "";
+  const openBadge = (id) => id === "home" ? `<span class="badge" data-open-count hidden></span>` : "";
   const sportSwitch = SPORTS.length < 2 ? "" : `<div class="sports" role="group" aria-label="Sport">${SPORTS.map((s) =>
     `<a href="${href(s.files.home)}"${s.key === SPORT.key ? ' aria-current="true"' : ""}>${esc(s.name)}${(s.markets || []).length ? "" : "<small>soon</small>"}</a>`).join("")}</div>`;
   const inRecords = records.some(([id]) => id === here);
@@ -98,13 +98,12 @@
         <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a></div></details>`;
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, everything else in the More sheet
-  const tabsFit = places.filter(([id]) => id !== "tools"), toolsLink = places.find(([id]) => id === "tools");
+  const tabsFit = places;                                                  // This week, Results, Parlays, Tools + More
   document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${tabsFit.map(([id, link, label, ic]) =>
       `<a href="${link}"${cur(id)}>${svg(ic)}<span>${esc(id === "home" ? PERIOD : label)}</span>${openBadge(id)}</a>`).join("")}
-      <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" || here === "tools" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
+      <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
       ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
-      ${toolsLink ? `<div class="eyebrow">Tools</div><a href="${toolsLink[1]}"${cur("tools")}>Bet sizing, odds, parlays, player lookup<i aria-hidden="true">&rsaquo;</i></a>` : ""}
       <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a></div></div>`);
   if (openNow.length) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openNow.length; b.hidden = false; });
   const navbar = $("navbar");
@@ -171,19 +170,19 @@
     const q = state.q.toLowerCase();
     return [p.player, p.name, p.team, p.opp, p.serial].some((x) => String(x || "").toLowerCase().includes(q));
   };
+  // one picker for season + week ("Week 10 · 2026"), so the control bar stays one row on a phone
   function pickers(picks, allowAll) {
     if (!seasons.length) return "";
     const ps = periodsOf(state.season, picks);
     if (state.week !== "all" && !ps.includes(state.week)) state.week = allowAll ? "all" : ps[0] ?? null;
-    return `<div class="pickers">
-      <label><span>Season</span><select id="pk-season">${seasons.map((s) => `<option value="${s}"${s === state.season ? " selected" : ""}>${s}</option>`).join("")}</select></label>
-      <label><span>${PERIOD}</span><select id="pk-week">${allowAll ? `<option value="all"${state.week === "all" ? " selected" : ""}>All</option>` : ""}${ps.map((w) => `<option value="${w}"${w === state.week ? " selected" : ""}>${PERIOD} ${w}</option>`).join("")}</select></label>
-    </div>`;
+    const opts = seasons.flatMap((y) => [...(allowAll ? [[`${y}-all`, `All ${PERIOD.toLowerCase()}s &middot; ${y}`]] : []),
+      ...periodsOf(y, picks).map((w) => [`${y}-${w}`, `${PERIOD} ${w} &middot; ${y}`])]);
+    const now = `${state.season}-${state.week}`;
+    return `<div class="pickers"><label><span class="sr">${PERIOD}</span><select id="pk-period">${opts.map(([k, l]) => `<option value="${k}"${k === now ? " selected" : ""}>${l}</option>`).join("")}</select></label></div>`;
   }
   const syncUrl = () => { const u = new URL(location.href); u.searchParams.set("season", state.season); u.searchParams.set("week", state.week); history.replaceState(null, "", u); };
   document.addEventListener("change", (e) => {
-    if (e.target.id === "pk-season") { state.season = Number(e.target.value); state.week = null; syncUrl(); redraw(true); }
-    if (e.target.id === "pk-week") { state.week = e.target.value === "all" ? "all" : Number(e.target.value); syncUrl(); redraw(true); }
+    if (e.target.id === "pk-period") { const [y, w] = e.target.value.split("-"); state.season = Number(y); state.week = w === "all" ? "all" : Number(w); syncUrl(); redraw(true); }
   });
   document.addEventListener("input", (e) => { if (e.target.id === "q") { state.q = e.target.value.trim(); redraw(false); } });
   document.addEventListener("click", (e) => {
@@ -264,7 +263,11 @@
 
   // every pick on one player: player.html?id=<player id>
   const playerHref = (pid) => `${(SPORT.files || {}).player || "player.html"}?id=${encodeURIComponent(pid)}`;
-  const playerLink = (p) => p.pid ? `<a class="plink" href="${playerHref(p.pid)}" title="Every pick on ${esc(nm(p))}">${esc(nm(p))}</a>` : esc(nm(p));
+  // a receiver's name opens the Tools page's player lookup at that pick's line; a QB's opens his record page (the
+  // lookup covers receptions only)
+  const playerLink = (p) => !p.pid ? esc(nm(p)) : p.prop === "receptions"
+    ? `<a class="plink" href="tools.html?player=${encodeURIComponent(p.pid)}&line=${p.line}#player" title="${esc(nm(p))}'s games this season">${esc(nm(p))}</a>`
+    : `<a class="plink" href="${playerHref(p.pid)}" title="Every pick on ${esc(nm(p))}">${esc(nm(p))}</a>`;
 
   /* ------------------------------------------------------------------ status of a pick: open / live / grading / final */
   function status(p, short) {
@@ -330,7 +333,7 @@
   function details(p, P) {
     const rows = [];
     if (p.quotes && p.quotes.length) rows.push(["Lines when stamped", p.quotes.map((q) => `${esc(q.book)} ${q.line} ${odds(q.over)}/${odds(q.under)}`).join("<br>")]);
-    if (p.sharp_line != null) rows.push([`Pinnacle${p.sharp_close ? " at close" : ""}`, `${p.sharp_line} ${odds(p.sharp_over)}/${odds(p.sharp_under)}`]);
+    if (p.sharp_line != null) rows.push([`Sharp line${p.sharp_close ? " at close" : ""}`, `${p.sharp_line} ${odds(p.sharp_over)}/${odds(p.sharp_under)}`]);
     if (p.market != null) rows.push(["Market's number", `${num(p.market, P.dec)} <span class="muted">vs model ${num(p.model, P.dec)}</span>`]);
     if (p.playable_to != null) rows.push(["Playable to", `${odds(p.playable_to)} <span class="muted">at ${p.line}: the worst price that still clears the ${D.min_ev ?? 2}% value bar</span>`]);
     rows.push(["Start", when(p.kick_utc, p.kick)]);
@@ -376,7 +379,7 @@
       ${details(p, P)}
       <div class="stub">
         <div><span class="serial">No. ${esc(p.serial)}</span><span class="when">Stamped ${when(p.stamped_utc, p.stamped)}${p.verify ? ` &middot; <a class="verify" href="${esc(p.verify)}" target="_blank" rel="noopener noreferrer" title="The public commit that first posted this pick: ${when(p.posted_utc, p.posted_at)}${p.posted_before ? ", before the start" : ""}">verify &nearr;</a>` : ""}</span></div>
-        <div class="stub-r">${p.pre ? `<span class="chip pre">pre-launch</span>` : p.paper ? `<span class="chip paper">paper</span>` : ""}${betButton(p)}${parlayButton(p)}<button type="button" class="share" data-serial="${esc(p.serial)}" aria-label="Share this pick">Share</button>${barcode(p.serial)}</div>
+        <div class="stub-r">${p.pre ? `<span class="chip pre">pre-launch</span>` : p.paper ? `<span class="chip paper">paper</span>` : ""}${betButton(p)}<button type="button" class="share" data-serial="${esc(p.serial)}" aria-label="Share this pick">Share</button>${barcode(p.serial)}</div>
       </div>
     </article>`;
   }
@@ -497,13 +500,18 @@
   // every way to narrow the list sits behind one Filter button (its count = filters switched on)
   state.fopen = false;
   const FUNNEL = `<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>`;
-  const toolbar = (pick, withMarket = true, panel = "") => `<div class="ctl"><div class="toolbar"><div class="tb-l">${pick}<span class="tb-jump" id="tb-jump"></span></div>
-      <span class="tb-r">${searchBox()}<button type="button" class="fbtn" id="fbtn" aria-expanded="${state.fopen}" aria-controls="fpanel">${FUNNEL}<span>Filter</span><b class="fcount" id="fcount" hidden></b></button>${viewBar()}</span></div>
-    <div class="fpanel" id="fpanel"${state.fopen ? "" : " hidden"}>${withMarket ? `${marketSeg()}${filterChips()}` : ""}${panel}</div></div>`;
+  // the control bar: period, search, and one Filters button; the view, market and filter chips live in its panel
+  const toolbar = (pick, withMarket = true, panel = "") => `<div class="ctl"><div class="toolbar">${pick}${searchBox()}
+      <button type="button" class="fbtn" id="fbtn" aria-expanded="${state.fopen}" aria-controls="fpanel">${FUNNEL}<span>Filters</span><b class="fcount" id="fcount" hidden></b></button></div>
+    <div class="fpanel" id="fpanel"${state.fopen ? "" : " hidden"}>
+      <div class="fp-row"><span class="fp-l">View</span>${viewBar()}</div>
+      ${withMarket && MK.length > 1 ? `<div class="fp-row"><span class="fp-l">Market</span>${marketSeg()}</div>` : ""}
+      ${withMarket ? `<div class="fp-row"><span class="fp-l">Show</span>${filterChips()}</div>` : ""}
+      ${panel ? `<div class="fp-row"><span class="fp-l">Show</span>${panel}</div>` : ""}</div></div>`;
   function filterCount() {
     const b = $("fcount"), panel = $("fpanel");
     if (!b || !panel || !panel.querySelectorAll) return;
-    const n = [...panel.querySelectorAll('button[aria-pressed="true"]')].filter((x) => x.dataset.market !== "all" && x.dataset.k !== "all").length;
+    const n = [...panel.querySelectorAll('button[aria-pressed="true"]')].filter((x) => !x.dataset.view && x.dataset.market !== "all" && x.dataset.k !== "all").length;
     b.textContent = n || ""; b.hidden = !n;
   }
   document.addEventListener("click", (e) => {
@@ -527,7 +535,7 @@
   }
 
   /* ------------------------------------------------------------------ featured pick: chosen automatically */
-  // the biggest edge (EV at the stamp) among picks not started yet, preferring ones Pinnacle agrees with, and
+  // the biggest edge (EV at the stamp) among picks not started yet, preferring ones sharp money agrees with, and
   // skipping any whose own book is now past the playable price or has taken the line down
   function featuredPick() {
     const ok = openNow.filter((p) => p.phase === "open" && p.ev != null && !MKT(p.prop).paper && (() => { const v = vsLine(p); return !v || (!v.stale && v.ok !== false); })());
@@ -539,7 +547,7 @@
     const p = featuredPick();
     if (!p) return "";
     const P = MKT(p.prop);
-    const why = `Chosen automatically: the biggest edge on the board (EV ${pct(p.ev).replace("&ndash;", "-")})${p.sharp === "agrees" ? ", and Pinnacle agrees" : ""}.`;
+    const why = `Chosen automatically: the biggest edge on the board (EV ${pct(p.ev).replace("&ndash;", "-")})${p.sharp === "agrees" ? ", and sharp money agrees" : ""}.`;
     return `<aside class="feat-card" style="${band(p)}" aria-label="Featured pick" title="${esc(why)}">
       <div class="fc-h"><span>Featured &middot; top edge</span>${status(p, true)}</div>
       <div class="fc-g">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></div>
@@ -651,7 +659,6 @@
     const n = list.filter((p) => p.phase === ph).length;
     return `<a href="#ph-${ph}" class="jp-${ph}"${n ? "" : ' aria-disabled="true"'}>${title}<span>${n}</span></a>`; }).join("")}</nav>`;
   function phaseSections(list, season, week) {
-    const tj = $("tb-jump"); if (tj) tj.innerHTML = jumpBar(list);             // Open / Live / Final sit in the control bar
     return PHASES.map(([ph, title, sub]) => {
       const ps = list.filter((p) => p.phase === ph).sort(byKick);
       const rec = ph === "final" ? `<div class="phase-rec">${MK.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(periodRec(MKT(k), season, week))}</span>`).join("")}</div>` : "";
@@ -668,11 +675,11 @@
     // the open picks; marquee() stays for any page that wants it)
     $("app").innerHTML = `
       ${homeRecap()}
-      <section><div class="head"><div><h2 id="wk-title"></h2></div><a class="more" href="${F.open}">All open picks &rarr;</a></div>
+      <section><div class="head"><div><h2 id="wk-title"></h2></div></div>
         <div id="tb"></div><div id="phases" class="phases"></div></section>
       ${notify()}`;
     redraw = (full) => {
-      if (full !== false || !$("pk-season")) $("tb").innerHTML = toolbar(pickers(allPicks, false));
+      if (full !== false || !$("pk-period")) $("tb").innerHTML = toolbar(pickers(allPicks, false));
       $("wk-title").textContent = `${PERIOD} ${state.week ?? "-"}, ${state.season}`;
       const list = allPicks.filter((p) => p.season === state.season && p.week === state.week && matches(p));
       $("phases").innerHTML = phaseSections(list, state.season, state.week);
@@ -681,21 +688,8 @@
     redraw(true);
   }
 
-  function openPage() {
-    hero("Not graded yet", `Open <em>${openNow.length}</em>`, openNow.length
-      ? "Every pick still to be settled, soonest first. Before the start, each ticket shows where the line and price have gone since the pick; once it starts, the close is locked in."
-      : "Nothing open right now. New picks go up once the books post lines and the model finds value.");
-    $("app").innerHTML = `<section><div id="tb"></div><div id="phases" class="phases"></div></section>`;
-    redraw = (full) => {
-      if (full !== false || !$("q")) $("tb").innerHTML = toolbar("");
-      const list = openNow.filter(matches);
-      $("tb-jump").innerHTML = jumpBar(list, PHASES.slice(0, 2));
-      $("phases").innerHTML = PHASES.slice(0, 2).map(([ph, title, sub]) => { const ps = list.filter((p) => p.phase === ph);
-        return `<details class="phase ph-${ph}" id="ph-${ph}"${ps.length ? " open" : ""}><summary><span class="ph-t">${title}<span class="count">${ps.length}</span></span><span class="ph-s">${sub}</span></summary>${ps.length ? picksBlock(ps) : `<div class="empty">Nothing ${title.toLowerCase()} right now.</div>`}</details>`; }).join("");
-      afterDraw();
-    };
-    redraw(true); revealHash();
-  }
+  // the Open page became part of This week: old links land on its Open section
+  const openPage = () => location.replace(`${href(F.home)}${location.hash || "#ph-open"}`);
 
   function resultsPage() {
     hero("Results", `${PERIOD} by <em>${PERIOD.toLowerCase()}</em>`, "Every graded pick, every market, at the size on its ticket and the stamped price. Tap a row to open that " + PERIOD.toLowerCase() + ".");
@@ -728,7 +722,7 @@
       <section><div class="head"><div><h2>Every pick</h2></div></div><div id="tb"></div><div id="picks" class="weekgroups"></div></section>`;
     document.addEventListener("click", (e) => { const b = e.target.closest("#chips button[data-k]"); if (b) { active = b.dataset.k; redraw(false); } });
     redraw = (full) => {
-      if (full !== false || !$("pk-season")) $("tb").innerHTML = toolbar(pickers(P.picks, true), false, `<div class="filters" id="chips" role="group" aria-label="Show"></div>`);
+      if (full !== false || !$("pk-period")) $("tb").innerHTML = toolbar(pickers(P.picks, true), false, `<div class="filters" id="chips" role="group" aria-label="Show"></div>`);
       const scope = P.picks.filter((p) => p.season === state.season && (state.week === "all" || p.week === state.week) && matches(p));
       const f = filters.find((x) => x[0] === active)[2], shown = scope.filter(f);
       $("chips").innerHTML = filters.filter(([k, , g]) => k === "all" || scope.some(g)).map(([k, l, g]) => `<button type="button" data-k="${k}" aria-pressed="${k === active}">${l}<span>${scope.filter(g).length}</span></button>`).join("");
@@ -828,17 +822,16 @@
         <dt>Playable to</dt><dd>The worst price at the stamped line where the pick still clears our value bar (expected value of at least ${D.min_ev ?? 2}%).</dd>
         <dt>Units</dt><dd>Every ticket shows the model's size for that pick, in units: a quarter of the Kelly stake at the stamped price, at most 2u, so a bigger edge gets a bigger size. The rule is the same every week and the size never changes after the pick is posted. The record grades each pick at that size (Units, ROI on the units risked), and also flat at 1 unit per pick (1u each), so you can judge the picks alone. What a unit is worth is up to you: the model posts dozens of picks a week, so most people use a small slice of their bankroll per unit.</dd></dl></section>
       <section><div><div class="eyebrow">Model + sharp money</div><h2>The Sharp label</h2></div>
-        <p class="lede">Pinnacle is the sharpest sportsbook. For every pick we read Pinnacle's line for the same player and ask which side its prices favour at our line. The label stays current until the start, then locks on Pinnacle's closing line (marked "close").</p>
-        <dl class="defs"><dt>Sharp agrees</dt><dd>Pinnacle priced our side as the likelier winner.</dd><dt>Sharp neutral</dt><dd>A coin flip at our line.</dd><dt>Sharp against</dt><dd>Pinnacle priced the other side as the likelier winner.</dd><dt>No sharp line</dt><dd>Pinnacle didn't list the player.</dd></dl></section>
+        <p class="lede">Besides the model, every pick is checked against where the sharpest money in the market leans on the same player, at our line. The label stays current until the start, then locks at the close (marked "close").</p>
+        <dl class="defs"><dt>Sharp agrees</dt><dd>Sharp money prices our side as the likelier winner.</dd><dt>Sharp neutral</dt><dd>A coin flip at our line.</dd><dt>Sharp against</dt><dd>Sharp money prices the other side as the likelier winner.</dd><dt>No sharp line</dt><dd>No sharp price for that player.</dd></dl></section>
       <section><div><div class="eyebrow">A tool, not a lock</div><h2>Parlays</h2></div>
-        <p class="lede">The <a href="${F.parlays || "parlays.html"}">Parlays</a> page combines open picks from different games at one sportsbook. A parlay pays only if every leg wins, so its chance is much lower than any single pick's.</p>
+        <p class="lede">The <a href="${F.parlays || "parlays.html"}">Parlays</a> page has the model's own parlay for each sportsbook. A parlay pays only if every leg wins, so its chance is much lower than any single pick's.</p>
         <dl class="defs">
         <dt>The model's parlay</dt><dd>One per book each ${PERIOD.toLowerCase()}: three legs from different Sunday games, taken from the open picks with the highest model chance, at that book's own lines and prices. Each update rebuilds it from the latest prices until the first Sunday kickoff; then it locks and never changes.</dd>
         <dt>Its record</dt><dd>Only the locked parlay counts, at 1 unit each, in its own record on the Parlays page. It is never added to any market's record.</dd>
         <dt>Pays</dt><dd>The legs' prices multiplied together. A book's own parlay price can differ a little.</dd>
         <dt>Book's chance</dt><dd>The chance the parlay's price implies, bookmaker's cut included.</dd>
-        <dt>Model's chance</dt><dd>The legs' model chances multiplied. That holds for legs from different games; legs from the same game move together, so the builder allows one leg per game.</dd>
-        <dt>Builder prices</dt><dd>Every leg uses the chosen book's line and price from the last update, since a parlay is placed at one book. A leg that book doesn't list is left out.</dd></dl></section>
+        <dt>Model's chance</dt><dd>The legs' model chances multiplied. That holds for legs from different games, which is why each leg comes from a different game.</dd></dl></section>
       ${notify()}
       <section><div><div class="eyebrow">Honesty notes</div><h2>What's on the record</h2></div><dl class="defs">
         ${MK.map((k) => `<dt>${esc(MKT(k).label)}</dt><dd>${esc(MKT(k).blurb)}</dd>`).join("")}
@@ -846,144 +839,50 @@
         <dt>New address (Nov 3, 2026)</dt><dd>Until Nov 3, 2026 this site was published from an earlier GitHub repository. Its full history was carried over here with every original commit time, so the "verify" links on picks posted before then point to that carried-over history. The original repository is kept, privately, as the record of when those picks first went public. Picks posted from Nov 3 on are verified here directly.</dd></dl></section>`;
   }
 
-  /* ------------------------------------------------------------------ parlays: one book, different games
-     A tool, not a pick: what a parlay pays, the chance the book's price implies, and the model's chance (the legs'
-     own chances multiplied - fair for legs from different games; same-game legs move together, so one leg per game).
-     Every leg is priced at ONE book's line and price as of the last update (D.parlays.board), because a parlay can't
-     be split across books.  The slip lives only in this browser. */
-  const PR = D.parlays || { model: [], record: {}, board: {}, legs: 3 };
-  const BOARD = PR.board || {}, PBOOKS = ["DraftKings", "FanDuel"], PMAX = 8;
-  const PKEY = "ll-parlay", BKEY = "ll-parlay-book";
-  const decOf = (a) => a > 0 ? 1 + a / 100 : 1 + 100 / -a;
-  const amOf = (d) => d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1));
-  const at = (p, book) => { const q = p && BOARD[p.serial] && BOARD[p.serial][book]; return q ? { line: q[0], price: q[1], win: q[2] } : null; };
-  const canParlay = (p) => p && p.phase === "open" && BOARD[p.serial] && Object.keys(BOARD[p.serial]).length > 0;
-  let legs = []; try { legs = JSON.parse(store.get(PKEY) || "[]"); } catch (e) { legs = []; }
-  let pbook = PBOOKS.includes(store.get(BKEY)) ? store.get(BKEY) : PBOOKS[0], pNote = "";
-  const tidy = () => { legs = legs.filter((s) => canParlay(byId[s])); store.set(PKEY, JSON.stringify(legs)); store.set(BKEY, pbook); };
+  /* ------------------------------------------------------------------ parlays: the model's own, one per book
+     Three legs from different Sunday games at one book's lines and prices (a parlay can't be split across books).
+     They rebuild with every update until the first Sunday kickoff, then lock; only the locked one is graded. */
+  const PR = D.parlays || { model: [], record: {}, legs: 3 };
+  const PBOOKS = ["DraftKings", "FanDuel"];
   const short = (k) => esc(MKT(k) ? MKT(k).short || MKT(k).label : k);
-  function parlayButton(p) {
-    if (!canParlay(p)) return "";
-    const on = legs.includes(p.serial);
-    return `<button type="button" class="padd${on ? " on" : ""}" data-padd="${esc(p.serial)}" aria-pressed="${on}">${on ? "&#10003; In parlay" : "+ Parlay"}</button>`;
-  }
-  // the legs at one book: [{p, q}] (q = null when that book doesn't list the player)
-  const slipAt = (book) => legs.map((s) => ({ p: byId[s], q: at(byId[s], book) }));
-  function parlayMath(qs) {
-    const D2 = qs.reduce((x, q) => x * decOf(q.price), 1), m = qs.reduce((x, q) => x * q.win / 100, 1);
-    return { D: D2, am: amOf(D2), book: 100 / D2, model: 100 * m };
-  }
   const stat = (k, v, cls = "", sub = "") => `<div><dt>${k}</dt><dd class="${cls}">${v}${sub ? `<small>${sub}</small>` : ""}</dd></div>`;
-  function nums(qs) {
-    if (qs.length < 2) return `<p class="ps-note">Add a leg from another game to build a parlay.</p>`;
-    const m = parlayMath(qs);
-    return `<dl class="ps-nums">${stat("Pays", odds(m.am), "", `$10 returns $${(10 * m.D).toFixed(2)}`)}${stat("Book's chance", pct(m.book, false))}${stat("Model's chance", pct(m.model, false))}</dl>`;
-  }
-  const bookSwitch = (cur, attr) => `<div class="seg pbook" role="group" aria-label="Sportsbook">${PBOOKS.map((b) =>
-    `<button type="button" ${attr}="${b}" aria-pressed="${b === cur}">${b}</button>`).join("")}</div>`;
-
-  // other pages: a small chip (center, clear of the phone's corners and home bar) that opens the Parlays page
-  function drawChip() {
-    tidy();
-    document.querySelectorAll("[data-padd]").forEach((b) => { const on = legs.includes(b.dataset.padd);
-      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); b.innerHTML = on ? "&#10003; In parlay" : "+ Parlay"; });
-    if (page === "parlays") drawBuilder();
-    let el = $("pchip");
-    if (!legs.length && !pNote) { if (el) el.hidden = true; return; }
-    if (!el) { el = document.createElement("a"); el.id = "pchip"; document.body.appendChild(el); }
-    el.hidden = false; el.href = page === "parlays" ? "#pbuild-s" : F.parlays || "parlays.html";   // on the page itself: back up to the slip
-    const qs = slipAt(pbook).map((x) => x.q).filter(Boolean);
-    el.innerHTML = pNote ? `<span class="pc-note">${pNote}</span>`
-      : `<b>Parlay</b><span>${legs.length} leg${legs.length === 1 ? "" : "s"} &middot; ${esc(abbr(pbook))}</span>${qs.length > 1 ? `<span class="mono">${odds(parlayMath(qs).am)}</span>` : ""}<i aria-hidden="true">&rarr;</i>`;
-    if (pNote) setTimeout(() => { pNote = ""; drawChip(); }, 3800);
-  }
-
-  // the Parlays page: the slip at the chosen book, then every open pick that book lists, by game
-  function drawBuilder() {
-    const box = $("pbuild");
-    if (!box) return;
-    const items = slipAt(pbook), ok = items.filter((x) => x.q), missing = items.filter((x) => !x.q);
-    const leg = ({ p, q }) => `<li class="${q ? "" : "off"}"><div><b>${esc(nm(p))}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span>
-        <small>${q ? `${odds(q.price)} &middot; model ${pct(q.win, false)}` : `not listed at ${esc(pbook)} - not counted`}</small></div>
-        <button type="button" class="ps-x" data-premove="${esc(p.serial)}" aria-label="Remove ${esc(nm(p))}">&times;</button></li>`;
-    const open = openNow.filter((p) => p.phase === "open" && canParlay(p));
-    const inGames = new Set(legs.map((s) => byId[s] && byId[s].game_id));
-    const games = gamesOf(open);
-    box.innerHTML = `<div class="pb-grid">
-      <div class="pb-slip"><div class="pb-h"><h3>Your parlay</h3>${bookSwitch(pbook, "data-pbook")}</div>
-        ${items.length ? `<ul class="ps-legs">${items.map(leg).join("")}</ul>` : `<p class="ps-note">Tap a pick to add it. One leg per game.</p>`}
-        ${missing.length ? `<p class="ps-note warn">${missing.length === 1 ? "One leg isn't" : missing.length + " legs aren't"} listed at ${esc(pbook)}. A parlay is placed at one book, so ${missing.length === 1 ? "it's" : "they're"} left out of the numbers.</p>` : ""}
-        ${pNote ? `<p class="ps-note warn">${pNote}</p>` : ""}
-        ${nums(ok.map((x) => x.q))}
-        ${items.length ? `<div class="ps-act"><button type="button" class="ps-clear" data-pclear>Clear</button></div>` : ""}</div>
-      <div class="pb-pool">${games.length ? games.map((g) => `<div class="pb-game"><div class="pb-gh"><span class="gteams">${tm(g.away)}<i class="at">@</i>${tm(g.home)}</span><span class="mono muted">${when(g.kick_utc, g.kick)}</span></div>
-        ${g.picks.map((p) => { const q = at(p, pbook), on = legs.includes(p.serial), blocked = !on && inGames.has(p.game_id);
-          return `<button type="button" class="pb-pick${on ? " on" : ""}" data-padd="${esc(p.serial)}" aria-pressed="${on}"${q ? "" : " disabled"}${blocked ? ' data-blocked="1"' : ""}>
-            <span><b>${esc(nm(p))}</b> ${p.side} ${q ? q.line : p.line} <span class="muted">${short(p.prop)}</span></span>
-            <span class="mono">${q ? `${odds(q.price)}<small>model ${pct(q.win, false)}</small>` : `<small>not at ${esc(abbr(pbook))}</small>`}</span></button>`; }).join("")}</div>`).join("")
-        : `<div class="empty">No open picks to build with right now. New ones appear as the books post lines.</div>`}</div></div>`;
-  }
-
-  function addLeg(s) {
-    const p = byId[s];
-    pNote = "";
-    if (legs.includes(s)) legs = legs.filter((x) => x !== s);
-    else if (legs.some((x) => byId[x] && byId[x].game_id === p.game_id)) pNote = `One leg per game: ${esc(nm(p))}'s game is already in your parlay.`;
-    else if (legs.length >= PMAX) pNote = `Up to ${PMAX} legs.`;
-    else legs.push(s);
-  }
-  document.addEventListener("click", (e) => {
-    const add = e.target.closest("[data-padd]");
-    if (add) { addLeg(add.dataset.padd); drawChip(); return; }
-    const bk = e.target.closest("[data-pbook]");
-    if (bk) { pbook = bk.dataset.pbook; pNote = ""; drawChip(); return; }
-    const rm = e.target.closest("[data-premove]");
-    if (rm) { legs = legs.filter((x) => x !== rm.dataset.premove); pNote = ""; drawChip(); return; }
-    if (e.target.closest("[data-pclear]")) { legs = []; pNote = ""; drawChip(); return; }
-    const ld = e.target.closest("[data-pload]");
-    if (ld) { const x = PR.model[Number(ld.dataset.pload)]; pbook = x.book; legs = x.legs.map((l) => l.serial).filter((s) => canParlay(byId[s])); pNote = ""; drawChip();
-      const box = $("pbuild"); if (box) box.scrollIntoView({ behavior: "smooth", block: "start" }); }
-  });
-
-  // one model parlay: its legs, the numbers, and where it stands (building, locked, settled)
   const RES = { W: "&#10003;", L: "&#10007;", P: "P", VOID: "void" };
-  function modelCard(x) {
-    const i = PR.model.indexOf(x);
+  const BOOKDOT = { DraftKings: "dk", FanDuel: "fd" };
+  // one model parlay as a slip: the book, what it pays, the legs joined like a ticket, and both chances as meters
+  function modelCard(x, big) {
     const state = x.result ? `<span class="pill res-${x.result}">${x.result === "W" ? `Won ${num(x.units, 2, true)}u` : x.result === "L" ? "Lost -1u" : "Push"}</span>`
       : x.locked ? `<span class="pill">Locked ${when(x.lock_utc, x.lock)}</span>`
-      : `<span class="pill building">Building &middot; locks ${when(x.lock_utc, x.lock)}</span>`;
-    if (!x.legs.length) return `<article class="pm-card"><header><span class="pm-book">${esc(x.book)}</span>${x.locked ? `<span class="pill">No parlay</span>` : state}</header>
+      : `<span class="pill building">Locks ${when(x.lock_utc, x.lock)}</span>`;
+    const head = `<header><span class="pm-book"><i class="bkdot ${BOOKDOT[x.book] || ""}" aria-hidden="true"></i>${esc(x.book)}</span>${state}</header>`;
+    if (!x.legs.length) return `<article class="pm-card${big ? " big" : ""}">${head}
       <p class="ps-note">${x.locked ? `Fewer than ${PR.legs} Sunday games had a pick at ${esc(x.book)} at the lock, so there was no parlay this ${PERIOD.toLowerCase()}.` : `Not enough Sunday picks at ${esc(x.book)} yet. It fills in as lines are posted.`}</p></article>`;
-    const canLoad = !x.locked && x.legs.every((l) => canParlay(byId[l.serial]));
-    return `<article class="pm-card${x.result ? " res-" + x.result : ""}"><header><span class="pm-book">${esc(x.book)}</span>${state}</header>
-      <ol class="pm-legs">${x.legs.map((l) => `<li><span class="pm-r ${l.result || ""}">${l.result ? RES[l.result] : ""}</span><a href="${byId[l.serial] ? pageOf(byId[l.serial]) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(byId[l.serial] ? nm(byId[l.serial]) : l.player)}</b> ${l.side} ${l.line}</a>
-        <span class="muted">${short(l.prop)}</span><span class="mono">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : `<small>model ${pct(l.win, false)}</small>`}</span></li>`).join("")}</ol>
-      <dl class="ps-nums">${stat("Pays", odds(x.american))}${stat("Book's chance", pct(x.book_chance, false))}${stat("Model's chance", pct(x.model_chance, false))}</dl>
-      <footer><span class="muted">${x.locked ? `Stamped at the lock, ${when(x.lock_utc, x.lock)}` : `Last rebuilt ${esc(x.built || "")} ET`}</span>${canLoad ? `<button type="button" class="ps-clear" data-pload="${i}">Open in builder</button>` : ""}</footer></article>`;
+    const meter = (label, v, cls) => `<div class="pm-meter ${cls}"><span>${label}</span><b>${pct(v, false)}</b><i style="--v:${Math.max(2, Math.min(100, v || 0))}%"></i></div>`;
+    const dec = x.american > 0 ? 1 + x.american / 100 : 1 + 100 / -x.american;
+    return `<article class="pm-card${big ? " big" : ""}${x.result ? " res-" + x.result : ""}">${head}
+      <div class="pm-pay"><b>${odds(x.american)}</b><span>$10 pays $${(10 * dec).toFixed(2)}</span></div>
+      <ol class="pm-legs">${x.legs.map((l) => { const p = byId[l.serial];
+        return `<li><span class="pm-r ${l.result || ""}">${l.result ? RES[l.result] : ""}</span><a href="${p ? pageOf(p) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><span>${l.side} ${l.line} ${short(l.prop)}</span></a>
+          <span class="mono">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : l.win != null ? `<small>${pct(l.win, false)} to win</small>` : ""}</span></li>`; }).join("")}</ol>
+      <div class="pm-meters">${meter("Model's chance", x.model_chance, "model")}${meter("Book's chance", x.book_chance, "book")}</div>
+      <footer class="muted">${x.locked ? `Stamped at the lock, ${when(x.lock_utc, x.lock)}` : `Updated ${esc(x.built || "")} ET &middot; place it at ${esc(x.book)}`}</footer></article>`;
   }
 
   function parlaysPage() {
-    hero(`Parlay tools &middot; ${D.season}`, "Parlays", "Build a parlay from open picks in different games, at one sportsbook, and see what it pays, the chance the book's price implies, and the model's chance. Or start from the model's own parlay for each book.");
     const weeks = [...new Set(PR.model.map((x) => `${x.season}-${x.week}`))];
     const cur = weeks.length ? weeks[weeks.length - 1] : null;
     const now = cur ? PR.model.filter((x) => `${x.season}-${x.week}` === cur && !(x.locked && x.result)) : [];
     const past = PR.model.filter((x) => x.locked && x.legs.length && !now.includes(x)).slice().reverse();
+    hero(`Model parlays${cur ? ` &middot; ${PERIOD} ${cur.split("-")[1]}` : ""}`, "This week's <em>parlays</em>", "",
+      now.length ? `<div class="pm-grid hero-pm">${now.map((x) => modelCard(x, true)).join("")}</div>` : `<div class="empty">No parlay this ${PERIOD.toLowerCase()} yet. They fill in as Sunday lines are posted.</div>`);
     const rec = PR.record || {};
     const recRow = (label, r) => `<tr><td>${esc(label)}</td><td class="num">${r.n || 0}</td><td class="num">${r.n ? `${r.W}-${r.L}${r.P ? "-" + r.P : ""}` : "&ndash;"}</td><td class="num ${tone(r.units)}">${r.n ? num(r.units, 2, true) + "u" : "&ndash;"}</td><td class="num opt ${tone(r.roi)}">${pct(r.roi)}</td></tr>`;
     $("app").innerHTML = `
-      ${now.length ? `<section><div class="head"><div><div class="eyebrow">The model's parlays &middot; ${PERIOD} ${cur.split("-")[1]}</div><h2>One per book</h2></div></div>
-        <p class="lede">Three legs from different Sunday games, picked from the open picks by the model's chance, at one book's lines and prices. They update as prices move, then lock at the first Sunday kickoff. Only the locked parlay counts in the record.</p>
-        <div class="pm-grid">${now.map(modelCard).join("")}</div></section>` : ""}
-      <section id="pbuild-s"><div class="head"><div><div class="eyebrow">Build your own${PR.board_at ? ` &middot; prices as of ${esc(PR.board_at)} ET` : ""}</div><h2>Parlay builder</h2></div></div>
-        <div id="pbuild"></div>
-        <p class="ps-fine">Each leg uses the chosen book's own line and price from the last update; the book's price may have moved since, and a book's parlay price can differ a little from the legs multiplied. Book's chance = what the parlay's price implies. Model's chance = the legs' chances multiplied, which holds for legs from different games. One leg per game: legs from the same game move together.</p></section>
-      <section><div class="head"><div><div class="eyebrow">Graded at 1u each, kept apart from every other record</div><h2>Model parlay record</h2></div></div>
+      <section><p class="lede">One parlay per sportsbook: three legs from different Sunday games, picked from the open picks with the highest model chance, at that book's own lines and prices. They update as prices move, then lock at the first Sunday kickoff. Only the locked parlay counts, at 1u, in its own record below. A parlay pays only if every leg wins, so it loses far more often than any single pick.</p></section>
+      <section><div class="head"><div><h2>Parlay record</h2></div></div>
         ${rec.all && rec.all.n ? `<div class="tablebox"><table><thead><tr><th>Book</th><th class="num">Parlays</th><th class="num">W-L-P</th><th class="num">Units</th><th class="num opt">ROI</th></tr></thead><tbody>
           ${recRow("All", rec.all)}${PBOOKS.filter((b) => rec[b]).map((b) => recRow(b, rec[b])).join("")}</tbody></table></div>`
           : `<div class="empty">No model parlay has been graded yet. The first ones lock at this week's first Sunday kickoff.</div>`}
-        ${past.length ? `<div class="pm-grid">${past.map(modelCard).join("")}</div>` : ""}</section>`;
-    redraw = () => { drawBuilder(); afterDraw(); };
-    drawChip();
+        ${past.length ? `<div class="pm-grid">${past.map((x) => modelCard(x)).join("")}</div>` : ""}</section>`;
   }
 
   /* ------------------------------------------------------------------ Tools: bet sizing, odds, parlays, player lookup.
@@ -1036,7 +935,7 @@
           <div class="tin">${field("o-odds", "Odds", "-130", ' placeholder="-130 or +115"')}${field("o-stake", "Stake ($)", "10")}
             ${field("o-other", "Other side's odds (optional)", "", ' placeholder="for the fair price"')}</div>
           <div class="tout" id="o-out"></div></div></div>
-      <div id="t-parlay" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[2][2]} Want our picks in one? <a href="${F.parlays || "parlays.html"}">Parlay builder</a></p>
+      <div id="t-parlay" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[2][2]} Want ours? <a href="${F.parlays || "parlays.html"}">The model's parlays</a></p>
         <div class="tool tgrid">
           <div class="tin"><div id="p-legs" class="tlegs"></div>
             <div class="tleft"><button type="button" class="ps-clear" id="p-add">+ Add a leg</button></div>
@@ -1170,7 +1069,9 @@
           <rect x="${X(i) - step / 2}" y="0" width="${step}" height="${H}" fill="transparent"/>
           <rect x="${X(i) - bw / 2}" y="${Y(0) - h}" width="${bw}" height="${h}" rx="4"/><text class="tb-v" x="${X(i)}" y="${Y(0) - h - 6}">${x[3]}</text>
           <text class="tb-x" x="${X(i)}" y="${H - 8}">${x[2] ? "" : "@"}${esc(x[1])}</text></g>`; }).join("");
-      $("l-out").innerHTML = `<div class="tplayer"><h3>${esc(who.full)}</h3><span class="muted">${esc(who.team)} ${esc(who.pos)} &middot; ${avg(3).toFixed(1)} catches, ${avg(4).toFixed(1)} targets a game</span></div>
+      const ourPicks = allPicks.filter((p) => p.pid === who.id).length;
+      $("l-out").innerHTML = `<div class="tplayer"><h3>${esc(who.full)}</h3><span class="muted">${esc(who.team)} ${esc(who.pos)} &middot; ${avg(3).toFixed(1)} catches, ${avg(4).toFixed(1)} targets a game</span>
+          ${ourPicks ? `<a class="tpl-all" href="${playerHref(who.id)}">Every pick we've made on him (${ourPicks}) &rarr;</a>` : ""}</div>
         <div class="rc-grid">${cell("Last 5", gs.slice(-5))}${cell("Last 10", gs.slice(-10))}${cell("Season", gs)}<div><small>Average</small><b>${avg(3).toFixed(1)}</b><span class="muted">vs line ${L}</span></div></div>
         <figure class="tchart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Catches per game against the line ${L}">
           <line class="tb-base" x1="${pad / 2}" x2="${W - pad / 2}" y1="${Y(0)}" y2="${Y(0)}"/>${bars}
@@ -1223,12 +1124,10 @@
       $("l-line").value = Math.max(0.5, (lineVal() ?? 4.5) + +b.dataset.ls); setUrl(); draw(); });
     const q = new URLSearchParams(location.search), start = byPid[q.get("player")];
     if (start) { $("l-q").value = label(start); if (q.get("line")) $("l-line").value = q.get("line"); choose(start, !!q.get("line")); }
-    else draw();
+    else { draw(); if (q.get("player")) $("l-out").innerHTML = `<div class="empty">No receiving games for that player this season yet. Search another name above.</div>`; }
   }
 
   setTimeout(() => { reveal(); countUp(); }, 0);
   const PAGES = { home, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
   (PAGES[page] || home)();
-  setInterval(() => { if (legs.length && syncPhases()) drawChip(); }, 30000);   // a leg whose game started drops out
-  drawChip();
 })();
