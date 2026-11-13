@@ -53,6 +53,13 @@
   syncPhases();
   const byId = Object.fromEntries(allPicks.map((p) => [p.serial, p]));
   const pageOf = (p) => `${MKT(p.prop).slug}.html`;
+  // "I bet this": ticks a visitor makes on the Tools page, kept in this browser only (serial -> 1).  Serials carry the
+  // season and week, so a new week starts empty; ticks for picks no longer on the site are dropped.
+  const MYBETS = (() => { let m = {}; try { m = JSON.parse(store.get("ll-mybets") || "{}") || {}; } catch (e) {}
+    const onSite = new Set(allPicks.map((p) => p.serial)); Object.keys(m).forEach((k) => { if (!onSite.has(k)) delete m[k]; }); return m; })();
+  const iBet = (p) => !!MYBETS[p.serial];
+  const setBet = (serial, on) => { if (on) MYBETS[serial] = 1; else delete MYBETS[serial]; store.set("ll-mybets", JSON.stringify(MYBETS)); };
+  const betMark = (p) => iBet(p) ? `<span class="ibet" title="You marked this as bet on the Tools page">&#10003; Bet</span>` : "";
   const linkTo = (p) => new URL(`${pageOf(p)}?season=${p.season}&week=${p.week}#${p.serial}`, location.href).href;
   const byKick = (a, b) => (a.kick_utc || "").localeCompare(b.kick_utc || "") || MK.indexOf(a.prop) - MK.indexOf(b.prop);
   const openNow = allPicks.filter((p) => p.phase !== "final").sort(byKick);
@@ -358,7 +365,7 @@
       : p.result === "VOID" ? `<div class="final">${p.void_reason ? `Voided &middot; ${esc(p.void_reason)}` : "Didn't play &middot; bet refunded"}</div>` : "";
     return `<article class="ticket${p.result ? " graded" : ""}" id="${esc(p.serial)}" style="${band(p)}">
       <div class="t-top">
-        <div class="t-meta"><span class="t-game">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></span>${sharpChip(p.sharp, p.sharp_close)}</div>
+        <div class="t-meta"><span class="t-game">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></span>${sharpChip(p.sharp, p.sharp_close)}${betMark(p)}</div>
         <div class="t-player">${playerLink(p)}</div>
         <div class="t-pick"><span><b>${p.side} ${p.line}</b><small>${odds(p.price)} ${esc(p.book)}</small></span>${p.result ? "" : status(p)}</div>
         ${p.phase === "open" && p.playable_to != null ? `<div class="final">Playable to <b>${odds(p.playable_to)}</b> &middot; <span class="muted">${esc(P.short || P.label)}</span></div>` : ""}        ${final}
@@ -388,7 +395,7 @@
     return `<article class="cstub${p.result ? " graded r-" + p.result : ""}" id="${esc(p.serial)}" data-serial="${esc(p.serial)}" style="${band(p)}">
       <button type="button" class="cs-row" aria-expanded="false" aria-label="${esc(nm(p))} ${p.side} ${p.line}: show the full ticket">
         <span class="cs-l">
-          <span class="cs-meta">${gameLabel(p)}<span class="cs-mk">${esc(P.short || P.label)}</span></span>
+          <span class="cs-meta">${gameLabel(p)}<span class="cs-mk">${esc(P.short || P.label)}</span>${betMark(p)}</span>
           <span class="cs-player">${esc(nm(p))}</span>
           <span class="cs-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(abbr(p.book))}</small></span>
         </span>
@@ -1053,14 +1060,34 @@
       const unit = typ && typ.units > 0 ? bank * share / 100 / typ.units : bank / 100;
       $("s-out").innerHTML = `<div class="tbig"><small>Your 1 unit</small><b>${money(unit)}</b><span>${(100 * unit / bank).toFixed(2)}% of your bankroll</span></div>
         <dl class="ps-nums tsizes">${[0.5, 1, 1.5, 2].map((u) => `<div><dt>${u}u bet</dt><dd>${money(roundStake(u * unit))}</dd></div>`).join("")}</dl>`;
-      const open = openNow.filter((p) => p.phase === "open" && p.units);
-      const was = $("s-picks").querySelector("details");
-      $("s-picks").innerHTML = open.length ? `<details class="tmore"${was && was.open ? " open" : ""}><summary>This ${PERIOD.toLowerCase()}'s ${open.length} open picks at your size</summary>
-        <div class="tablebox"><table><thead><tr><th>Player</th><th>Pick</th><th class="num opt">Odds</th><th class="opt">Book</th><th class="num">Size</th><th class="num">Your bet</th><th class="num opt">To win</th></tr></thead><tbody>
-        ${open.map((p) => { const st = roundStake(p.units * unit), d = toDec(p.price);
-          return `<tr><td><b>${esc(nm(p))}</b> <span class="muted">${esc(p.team)}</span></td><td>${p.side} ${p.line} <span class="muted">${esc(MKT(p.prop).short || MKT(p.prop).label)}</span></td><td class="num opt">${odds(p.price)}</td><td class="opt">${esc(abbr(p.book))}</td><td class="num">${p.units.toFixed(1)}u</td><td class="num"><b>${money(st)}</b></td><td class="num opt">${money(st * (d - 1))}</td></tr>`; }).join("")}
-        </tbody></table></div></details>` : "";
+      unitNow = unit; drawPicks();
     };
+    // this week's open picks at the visitor's size: a to-do list with the book's bet button, a Sharp-agrees filter and
+    // their own "I bet this" ticks (see MYBETS)
+    let unitNow = 0;
+    const sharpOnly = () => store.get("ll-sharponly") === "1", hideBet = () => store.get("ll-hidebet") === "1";
+    const drawPicks = () => {
+      const all = openNow.filter((p) => p.phase === "open" && p.units);
+      if (!all.length || !(unitNow > 0)) { $("s-picks").innerHTML = ""; return; }
+      const pool = sharpOnly() ? all.filter((p) => p.sharp === "agrees") : all;
+      const stake = (p) => roundStake(p.units * unitNow), sum = (ps) => ps.reduce((t, p) => t + stake(p), 0);
+      const done = pool.filter(iBet), left = pool.filter((p) => !iBet(p)), rows = hideBet() ? left : pool;
+      $("s-picks").innerHTML = `<div class="tpk-h"><h3>This ${PERIOD.toLowerCase()}'s picks at your size</h3>
+        <div class="tpk-ctl"><div class="tseg tseg-s" role="group" aria-label="Which picks"><button type="button" data-sh="0" aria-pressed="${!sharpOnly()}">All picks</button><button type="button" data-sh="1" aria-pressed="${sharpOnly()}">Sharp agrees</button></div>
+          <label class="tchk"><input type="checkbox" id="s-hide"${hideBet() ? " checked" : ""}> Hide ones I've bet</label></div></div>
+        <p class="tpk-sum"><b>${done.length} of ${pool.length}</b> bet &middot; ${money(sum(done))} placed &middot; <b>${money(sum(left))}</b> left to bet</p>
+        ${rows.length ? `<div class="tablebox"><table class="tpk"><thead><tr><th class="tck" title="Tick it after you place it">Bet</th><th>Pick</th><th class="num opt">Size</th><th class="num">Your bet</th><th class="num opt">To win</th><th></th></tr></thead><tbody>
+          ${rows.map((p) => { const st = stake(p), on = iBet(p);
+            return `<tr class="${on ? "isbet" : ""}"><td class="tck"><input type="checkbox" data-mybet="${esc(p.serial)}"${on ? " checked" : ""} aria-label="I bet ${esc(nm(p))} ${p.side} ${p.line}"></td>
+              <td><b>${esc(nm(p))}</b>${p.sharp === "agrees" ? ` <span class="tsh" title="Sharp agrees">sharp &#10003;</span>` : ""}<small>${p.side} ${p.line} ${esc(MKT(p.prop).short || MKT(p.prop).label)} &middot; ${odds(p.price)} ${esc(abbr(p.book))} &middot; ${when(p.kick_utc, p.kick)}</small></td>
+              <td class="num opt">${p.units.toFixed(1)}u</td><td class="num"><b>${money(st)}</b></td><td class="num opt">${money(st * (toDec(p.price) - 1))}</td><td class="tbtn">${betButton(p)}</td></tr>`; }).join("")}
+          </tbody></table></div>` : `<div class="empty">${pool.length ? "Every pick here is marked as bet." : "No open Sharp-agrees picks right now."}</div>`}
+        <p class="ps-fine">Tick a pick after you place it. Ticks stay in this browser on this device only (nothing is sent anywhere), and each ${PERIOD.toLowerCase()} starts fresh. Bet buttons open the book; nothing is placed for you.</p>`;
+    };
+    $("s-picks").addEventListener("click", (e) => { const b = e.target.closest("[data-sh]"); if (b) { store.set("ll-sharponly", b.dataset.sh); drawPicks(); } });
+    $("s-picks").addEventListener("change", (e) => {
+      if (e.target.id === "s-hide") { store.set("ll-hidebet", e.target.checked ? "1" : "0"); drawPicks(); return; }
+      const s = e.target.dataset.mybet; if (s) { setBet(s, e.target.checked); drawPicks(); } });
     $("s-bank").addEventListener("input", sizeOut); $("s-share").addEventListener("click", (e) => { const b = e.target.closest("[data-share]"); if (!b) return;
       $("s-share").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); sizeOut(); });
     sizeOut();
