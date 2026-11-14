@@ -79,6 +79,8 @@
     parlays: '<path d="M8 7h11M8 12h11M8 17h11"/><circle cx="4.5" cy="7" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17" r="1"/>',
     tools: '<path d="M4 20l7-7M14.5 3.5a4.5 4.5 0 0 0-4 6.5L4 16.5V20h3.5l6.5-6.5a4.5 4.5 0 0 0 6.5-4l-3 1-2.5-2.5 1-3z"/>',
     more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>' };
+  const BRAND = { x: "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z", discord: "M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.028C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.042-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" };
+  const brand = (k, s = 18) => `<svg class="brand-${k}" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path fill="currentColor" d="${BRAND[k]}"/></svg>`;
   const svg = (k) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
   const places = (SPORT.markets || []).length
     ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["results", F.results, "Results", "results"],
@@ -86,7 +88,8 @@
     : [["soon", href(F.home), "Overview", "week"]];
   const records = [...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).label]), ["clv", `clv.html${keep}`, "Closing line value"]];
   const how = ["method", `method.html${keep}`, "How it works"];
-  const follow = [...(D.discord ? [[esc(D.discord), "Discord alerts"]] : []), ...(D.x ? [[`https://x.com/${esc(D.x)}`, `X &middot; @${esc(D.x)}`]] : [])];
+  const follow = [...(D.discord ? [[esc(D.discord), "Discord alerts", "discord"]] : []), ...(D.x ? [[`https://x.com/${esc(D.x)}`, `X &middot; @${esc(D.x)}`, "x"]] : [])];
+  const fl = (cls) => follow.map(([link, label, k]) => `<a class="${cls}" href="${link}" target="_blank" rel="noopener" aria-label="${label.replace(/&middot;/, "-")}">${brand(k)}<span>${label}</span></a>`).join("");
   const here = page === "market" ? `m:${pageMarket}` : page;
   const cur = (id) => id === here ? ' aria-current="page"' : "";
   const openBadge = (id) => id === "home" ? `<span class="badge" data-open-count hidden></span>` : "";
@@ -96,7 +99,8 @@
   $("tabs").innerHTML = sportSwitch + places.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}${openBadge(id)}</a>`).join("")
     + `<details class="navmenu"><summary${inRecords ? ' aria-current="page"' : ""}>Records<i aria-hidden="true"></i></summary><div class="navpop">
         ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}</a>`).join("")}
-        <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a>${follow.map(([link, label]) => `<a href="${link}" target="_blank" rel="noopener">${label}</a>`).join("")}</div></details>`;
+        <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a>${fl("fl-menu")}</div></details>`;
+  document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<span class="social">${fl("soc")}</span>`);
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, everything else in the More sheet
   const tabsFit = places;                                                  // This week, Results, Parlays, Tools + More
@@ -105,7 +109,7 @@
       <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
       ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
-      <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${follow.map(([link, label]) => `<a href="${link}" target="_blank" rel="noopener">${label}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}` : ""}</div></div>`);
+      <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
   if (openNow.length) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openNow.length; b.hidden = false; });
   const navbar = $("navbar");
   const onScroll = () => navbar.classList.toggle("scrolled", scrollY > 8);
@@ -490,8 +494,8 @@
   function notify() {
     const feed = `${D.site_url || ""}feed.xml`;
     return `<section class="notify"><div><div class="eyebrow">Never miss a pick</div><h2>Get alerts</h2></div><div class="ways">
-      ${D.discord ? `<a class="way" href="${esc(D.discord)}" target="_blank" rel="noopener"><b>Discord</b><span>Free. Every pick posts in #alerts the moment it's made, so your phone buzzes before the line moves.</span></a>` : ""}
-      ${D.x ? `<a class="way" href="https://x.com/${esc(D.x)}" target="_blank" rel="noopener"><b>X</b><span>Follow <span class="mono">@${esc(D.x)}</span> for the pick of the day and every week's results.</span></a>` : ""}
+      ${D.discord ? `<a class="way" href="${esc(D.discord)}" target="_blank" rel="noopener"><b>${brand("discord", 22)} Discord</b><span>Free. Every pick posts in #alerts the moment it's made, so your phone buzzes before the line moves.</span></a>` : ""}
+      ${D.x ? `<a class="way" href="https://x.com/${esc(D.x)}" target="_blank" rel="noopener"><b>${brand("x", 20)} X</b><span>Follow <span class="mono">@${esc(D.x)}</span> for the pick of the day and every week's results.</span></a>` : ""}
       <a class="way" href="feed.xml"><b>RSS feed</b><span>Add <span class="mono">${esc(feed)}</span> to any feed reader app and switch on alerts for new items.</span></a>
       ${standalone() ? "" : `<a class="way" href="#" id="install"><b>Add to home screen</b><span>iPhone: tap Share, then Add to Home Screen. Android: tap the menu, then Install app. It opens full screen, like an app.</span></a>`}</div></section>`;
   }

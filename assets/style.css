@@ -1134,3 +1134,17 @@ body:not([data-page="home"]) main { padding-top: 28px; gap: 40px; }
 .tpl-all { font-size: 13.5px; font-weight: 600; text-decoration: none; color: var(--accent); margin-top: 2px; }
 .pm-legs li { grid-template-columns: 34px minmax(0, 1fr) auto; }
 .pm-r { font-size: 11px; text-align: center; }
+
+/* Follow links (Nov 14): X + Discord logos in the top bar, menus and the alerts cards */
+.social { display: inline-flex; gap: 6px; }
+.soc { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid #2c3b5c;
+  color: var(--board-text); text-decoration: none; transition: border-color .2s ease, color .2s ease; }
+.soc span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.soc:hover { border-color: #4a5c82; }
+.soc:hover .brand-discord { color: #8c96ff; }
+.fl-menu { display: flex !important; align-items: center; gap: 10px; }
+.fl-menu svg { flex: none; }
+.fl-menu { justify-content: flex-start !important; }
+.fl-menu span { flex: 1; text-align: left; }
+.way b { display: inline-flex; align-items: center; gap: 10px; }
+.way .brand-discord { color: #5865f2; }
