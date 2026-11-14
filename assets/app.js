@@ -86,6 +86,7 @@
     : [["soon", href(F.home), "Overview", "week"]];
   const records = [...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).label]), ["clv", `clv.html${keep}`, "Closing line value"]];
   const how = ["method", `method.html${keep}`, "How it works"];
+  const follow = [...(D.discord ? [[esc(D.discord), "Discord alerts"]] : []), ...(D.x ? [[`https://x.com/${esc(D.x)}`, `X &middot; @${esc(D.x)}`]] : [])];
   const here = page === "market" ? `m:${pageMarket}` : page;
   const cur = (id) => id === here ? ' aria-current="page"' : "";
   const openBadge = (id) => id === "home" ? `<span class="badge" data-open-count hidden></span>` : "";
@@ -95,7 +96,7 @@
   $("tabs").innerHTML = sportSwitch + places.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}${openBadge(id)}</a>`).join("")
     + `<details class="navmenu"><summary${inRecords ? ' aria-current="page"' : ""}>Records<i aria-hidden="true"></i></summary><div class="navpop">
         ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}</a>`).join("")}
-        <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a></div></details>`;
+        <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a>${follow.map(([link, label]) => `<a href="${link}" target="_blank" rel="noopener">${label}</a>`).join("")}</div></details>`;
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, everything else in the More sheet
   const tabsFit = places;                                                  // This week, Results, Parlays, Tools + More
@@ -104,7 +105,7 @@
       <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
       ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
-      <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a></div></div>`);
+      <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${follow.map(([link, label]) => `<a href="${link}" target="_blank" rel="noopener">${label}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}` : ""}</div></div>`);
   if (openNow.length) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openNow.length; b.hidden = false; });
   const navbar = $("navbar");
   const onScroll = () => navbar.classList.toggle("scrolled", scrollY > 8);
@@ -489,7 +490,8 @@
   function notify() {
     const feed = `${D.site_url || ""}feed.xml`;
     return `<section class="notify"><div><div class="eyebrow">Never miss a pick</div><h2>Get alerts</h2></div><div class="ways">
-      ${D.discord ? `<a class="way" href="${esc(D.discord)}"><b>Discord</b><span>Join the picks channel and turn on notifications: your phone buzzes the moment a pick is posted.</span></a>` : ""}
+      ${D.discord ? `<a class="way" href="${esc(D.discord)}" target="_blank" rel="noopener"><b>Discord</b><span>Free. Every pick posts in #alerts the moment it's made, so your phone buzzes before the line moves.</span></a>` : ""}
+      ${D.x ? `<a class="way" href="https://x.com/${esc(D.x)}" target="_blank" rel="noopener"><b>X</b><span>Follow <span class="mono">@${esc(D.x)}</span> for the pick of the day and every week's results.</span></a>` : ""}
       <a class="way" href="feed.xml"><b>RSS feed</b><span>Add <span class="mono">${esc(feed)}</span> to any feed reader app and switch on alerts for new items.</span></a>
       ${standalone() ? "" : `<a class="way" href="#" id="install"><b>Add to home screen</b><span>iPhone: tap Share, then Add to Home Screen. Android: tap the menu, then Install app. It opens full screen, like an app.</span></a>`}</div></section>`;
   }
