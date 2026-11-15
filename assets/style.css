@@ -1152,3 +1152,10 @@ body:not([data-page="home"]) main { padding-top: 28px; gap: 40px; }
 /* Home-screen app (Nov 15): the top bar reaches up under the clock and battery there, and iOS smears its glass blur at
    the screen's top edge - so in app mode the bar is solid (same colour), with no blur */
 html.app .navbar { background: var(--board); -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* iOS 26 draws its own fade ~40pt under the clock in home-screen apps (no setting turns it off): in app mode the bar
+   gets 30px more solid navy on top so the logo row sits below the fade; the sticky filter row follows it */
+html.app { --app-clear: 30px; }
+html.app .navbar { padding-top: calc(env(safe-area-inset-top, 0px) + var(--app-clear)); }
+html.app .ctl { top: calc(60px + env(safe-area-inset-top, 0px) + var(--app-clear)); }
+@media (max-width: 680px) { html.app .ctl { top: calc(56px + env(safe-area-inset-top, 0px) + var(--app-clear)); } }
+@media (orientation: landscape) and (max-height: 500px) { html.app { --app-clear: 0px; } }
