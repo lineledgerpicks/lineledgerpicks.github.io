@@ -142,7 +142,11 @@
     navigator.serviceWorker.register("sw.js").catch(() => {});
   let installEvt = null;
   const standalone = () => matchMedia("(display-mode: standalone)").matches || (typeof navigator !== "undefined" && navigator.standalone);
-  if (standalone()) document.documentElement.classList.add("app");   // opened from the home screen (style.css: solid top bar)
+  if (standalone()) {                    // opened from the home screen: the top bar is pinned (fixed, solid) so iOS treats it
+    document.documentElement.classList.add("app");   // as a bar, not page content it blurs under the clock (style.css)
+    const room = () => { document.body.style.paddingTop = `${$("navbar").offsetHeight}px`; };
+    room(); addEventListener("resize", room); addEventListener("orientationchange", room);
+  }
   addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; const w = $("install"); if (w) w.querySelector("span").textContent = "Tap here to install Line Ledger on this device."; });
   document.addEventListener("click", async (e) => {
     if (!e.target.closest("#install")) return;

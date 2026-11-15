@@ -1151,5 +1151,5 @@ body:not([data-page="home"]) main { padding-top: 28px; gap: 40px; }
 
 /* Home-screen app (Nov 15): the top bar reaches up under the clock and battery there, and iOS smears its glass blur at
    the screen's top edge - so in app mode the bar is solid (same colour), with no blur */
-html.app .navbar { background: var(--board); -webkit-backdrop-filter: none; backdrop-filter: none; }
-@media (display-mode: standalone) { .navbar { background: var(--board); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+html.app .navbar { position: fixed; top: 0; left: 0; right: 0; background: var(--board); -webkit-backdrop-filter: none; backdrop-filter: none; }
+html.app { scroll-padding-top: calc(70px + env(safe-area-inset-top, 0px)); }
