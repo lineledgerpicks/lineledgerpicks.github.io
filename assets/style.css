@@ -1148,3 +1148,8 @@ body:not([data-page="home"]) main { padding-top: 28px; gap: 40px; }
 .fl-menu span { flex: 1; text-align: left; }
 .way b { display: inline-flex; align-items: center; gap: 10px; }
 .way .brand-discord { color: #5865f2; }
+
+/* Home-screen app (Nov 15): the top bar reaches up under the clock and battery there, and iOS smears its glass blur at
+   the screen's top edge - so in app mode the bar is solid (same colour), with no blur */
+html.app .navbar { background: var(--board); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (display-mode: standalone) { .navbar { background: var(--board); -webkit-backdrop-filter: none; backdrop-filter: none; } }

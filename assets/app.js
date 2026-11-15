@@ -142,6 +142,7 @@
     navigator.serviceWorker.register("sw.js").catch(() => {});
   let installEvt = null;
   const standalone = () => matchMedia("(display-mode: standalone)").matches || (typeof navigator !== "undefined" && navigator.standalone);
+  if (standalone()) document.documentElement.classList.add("app");   // opened from the home screen (style.css: solid top bar)
   addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; const w = $("install"); if (w) w.querySelector("span").textContent = "Tap here to install Line Ledger on this device."; });
   document.addEventListener("click", async (e) => {
     if (!e.target.closest("#install")) return;
