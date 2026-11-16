@@ -1159,3 +1159,29 @@ html.app .navbar { padding-top: calc(env(safe-area-inset-top, 0px) + var(--app-c
 html.app .ctl { top: calc(60px + env(safe-area-inset-top, 0px) + var(--app-clear)); }
 @media (max-width: 680px) { html.app .ctl { top: calc(56px + env(safe-area-inset-top, 0px) + var(--app-clear)); } }
 @media (orientation: landscape) and (max-height: 500px) { html.app { --app-clear: 0px; } }
+
+/* Sealed picks (Nov 16): open picks members see first, shown as seals until kickoff */
+.sealed { display: grid; gap: 12px; margin-top: 12px; padding: 16px; border: 1px dashed var(--rule); border-radius: 14px; background: var(--ticket); }
+.sl-h { display: flex; align-items: flex-start; gap: 12px; }
+.sl-h > div { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.sl-h b { font: 800 20px/1.1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+.sl-h span { color: var(--muted); font-size: 14px; }
+.sl-lock { display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--board); color: var(--board-text); }
+.sl-join { flex: none; align-self: center; padding: 9px 14px; border-radius: 999px; background: var(--accent); color: #142139; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.sl-g { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.sl-gh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 14px; }
+.sl-gh em { margin-left: auto; font: 600 12px/1 var(--mono); color: var(--muted); }
+.sl-teams { display: inline-flex; align-items: center; gap: 4px; }
+.sl-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.sl-t { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--rule); border-radius: 9px; font-size: 12px; }
+.sl-t b { font: 600 12px/1 var(--mono); }
+.sl-t small { color: var(--muted); }
+.sl-t code, .sealcode { font: 500 12px/1 var(--mono); color: var(--muted); }
+.sl-note { line-height: 1.6; color: var(--muted); font-size: 14px; }
+.sealchk { margin-top: 6px; padding: 5px 10px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: inherit; font: 600 12px/1 var(--body); cursor: pointer; }
+.sealok { color: var(--up); font-weight: 600; }
+.sealbad { color: var(--down); font-weight: 600; }
+.pm-sealed .pm-sl { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+.pm-sealed .pm-sl b { color: var(--ink); }
+@media (max-width: 560px) { .sl-h { flex-wrap: wrap; } .sl-join { width: 100%; text-align: center; } }
+.sl-note svg { vertical-align: -3px; margin-right: 4px; }

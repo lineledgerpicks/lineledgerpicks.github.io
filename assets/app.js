@@ -3,6 +3,12 @@
    market is a data change, not a code change. */
 (function () {
   const D = window.DATA;
+  // sealed picks: open picks members see first.  They stay out of every list and record, and show as seals in This
+  // week's Open section until kickoff, when the next publish reveals them (site.public_view)
+  const SEALED = [];
+  Object.values(D.props || {}).forEach((P) => { P.picks = P.picks.filter((p) => !(p.sealed && SEALED.push(p))); });
+  const sealedOpen = () => SEALED.filter((p) => !p.kick_utc || new Date(p.kick_utc) > Date.now());
+  const LOCK = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
   const page = document.body.dataset.page;
   const pageMarket = document.body.dataset.market;
   const $ = (id) => document.getElementById(id);
@@ -110,7 +116,8 @@
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
       ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
       <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
-  if (openNow.length) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openNow.length; b.hidden = false; });
+  const openCount = openNow.length + sealedOpen().length;
+  if (openCount) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openCount; b.hidden = false; });
   const navbar = $("navbar");
   const onScroll = () => navbar.classList.toggle("scrolled", scrollY > 8);
   addEventListener("scroll", onScroll, { passive: true }); onScroll();
@@ -343,6 +350,7 @@
     if (p.market != null) rows.push(["Market's number", `${num(p.market, P.dec)} <span class="muted">vs model ${num(p.model, P.dec)}</span>`]);
     if (p.playable_to != null) rows.push(["Playable to", `${odds(p.playable_to)} <span class="muted">at ${p.line}: the worst price that still clears the ${D.min_ev ?? 2}% value bar</span>`]);
     rows.push(["Start", when(p.kick_utc, p.kick)]);
+    if (p.seal && p.salt) rows.push(["Sealed before kickoff", `<code class="sealcode">${esc(p.seal.slice(0, 16))}&hellip;</code><br><button type="button" class="sealchk" data-serial="${esc(p.serial)}">Check the seal</button>`]);
     if (p.verify) rows.push(["Posted publicly", `${when(p.posted_utc, p.posted_at)} <span class="muted">(${p.posted_before ? "before the start" : "after the start &middot; pre-launch"})</span><br><a href="${esc(p.verify)}" target="_blank" rel="noopener noreferrer">see the public record of this post &nearr;</a>`]);
     if (p.closed && p.clv != null) rows.push(["Closing line", `${p.now} ${p.close_price != null ? odds(p.close_price) : ""} ${esc(p.close_book || "")} <span class="muted">(${sgn(p.clv)}${p.clv.toFixed(1)} ${P.unit})</span>`]);
     return `<details class="drawer"><summary>Ticket details</summary><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></details>`;
@@ -556,7 +564,7 @@
     const P = MKT(p.prop);
     const why = `Chosen automatically: the biggest edge on the board (EV ${pct(p.ev).replace("&ndash;", "-")})${p.sharp === "agrees" ? ", and sharp money agrees" : ""}.`;
     return `<aside class="feat-card" style="${band(p)}" aria-label="Featured pick" title="${esc(why)}">
-      <div class="fc-h"><span>Featured &middot; top edge</span>${status(p, true)}</div>
+      <div class="fc-h"><span>${p.free ? "Free pick &middot; today" : "Featured &middot; top edge"}</span>${status(p, true)}</div>
       <div class="fc-g">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></div>
       <div class="fc-player">${esc(nm(p))}</div>
       <div class="fc-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(p.book)} &middot; ${esc(P.short || P.label)}</small></div>
@@ -668,11 +676,37 @@
   function phaseSections(list, season, week) {
     return PHASES.map(([ph, title, sub]) => {
       const ps = list.filter((p) => p.phase === ph).sort(byKick);
+      const sl = ph === "open" ? sealedOpen().filter((p) => p.season === season && p.week === week) : [];
+      if (sl.length) return `<details class="phase ph-${ph}" id="ph-${ph}" open><summary><span class="ph-t">${title}<span class="count">${ps.length + sl.length}</span></span><span class="ph-s">${sub}</span></summary>
+        ${ps.length ? picksBlock(ps) : ""}${sealedBlock(sl)}</details>`;
       const rec = ph === "final" ? `<div class="phase-rec">${MK.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(periodRec(MKT(k), season, week))}</span>`).join("")}</div>` : "";
       return `<details class="phase ph-${ph}" id="ph-${ph}"${ps.length ? " open" : ""}><summary><span class="ph-t">${title}<span class="count">${ps.length}</span></span><span class="ph-s">${sub}</span></summary>
         ${rec}${ps.length ? picksBlock(ps) : `<div class="empty">Nothing ${title.toLowerCase()} ${ph === "final" ? "yet this " + PERIOD.toLowerCase() : "right now"}.</div>`}</details>`;
     }).join("");
   }
+
+  // the seals of this week's open picks, by game: what anyone can see before kickoff
+  function sealedBlock(list) {
+    const games = {};
+    list.slice().sort(byKick).forEach((p) => { (games[`${p.kick_utc}|${p.game}`] ||= []).push(p); });
+    const teams = (g) => { const [a, b] = String(g || "").split(" @ "); return b ? `${tm(a)}<i class="at">@</i>${tm(b)}` : esc(g); };
+    return `<div class="sealed"><div class="sl-h"><span class="sl-lock">${LOCK}</span><div><b>${list.length} sealed pick${list.length === 1 ? "" : "s"}</b>
+        <span>Members see these now. Each one is revealed here at kickoff, and its seal proves it wasn't changed.</span></div>
+        ${D.join_url ? `<a class="sl-join" href="${esc(D.join_url)}">Unlock picks</a>` : ""}</div>
+      ${Object.values(games).map((g) => `<div class="sl-g"><div class="sl-gh"><span class="sl-teams">${teams(g[0].game)}</span><span class="muted">${when(g[0].kick_utc, g[0].kick)}</span><em>${g.length} sealed</em></div>
+        <div class="sl-list">${g.map((p) => `<span class="sl-t" title="Seal ${esc(p.seal || "")}"><b>No. ${esc(p.serial)}</b><small>${esc(MKT(p.prop) ? (MKT(p.prop).short || MKT(p.prop).label) : "")}</small><code>${esc((p.seal || "").slice(0, 8))}&hellip;</code></span>`).join("")}</div></div>`).join("")}</div>`;
+  }
+  // a revealed pick's seal, checked in the browser: the same text the site sealed (site.seal_text), SHA-256
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("button.sealchk");
+    if (!b) return;
+    const p = byId[b.dataset.serial];
+    if (!p || !(window.crypto && crypto.subtle)) { b.textContent = "Can't check in this browser"; return; }
+    const text = `${p.serial}|${p.pid}|${p.prop}|${p.side}|${p.line}|${p.price > 0 ? "+" : ""}${p.price}|${p.book}|${p.salt}`;
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    const hex = [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, "0")).join("");
+    b.outerHTML = hex === p.seal ? `<span class="sealok">&#10003; Matches: unchanged since it was sealed</span>` : `<span class="sealbad">&#10007; Doesn't match</span>`;
+  });
 
   function home() {
     hero(`${esc(SPORT.name)} player props &middot; ${D.season}`, "Every pick stamped. <em>Every result kept.</em>",
@@ -867,7 +901,8 @@
     const dec = x.american > 0 ? 1 + x.american / 100 : 1 + 100 / -x.american;
     return `<article class="pm-card${big ? " big" : ""}${x.result ? " res-" + x.result : ""}">${head}
       <div class="pm-pay"><b>${odds(x.american)}</b><span>$10 pays $${(10 * dec).toFixed(2)}</span></div>
-      <ol class="pm-legs">${x.legs.map((l) => { const p = byId[l.serial];
+      <ol class="pm-legs">${x.legs.map((l) => { if (l.sealed) return `<li class="pm-sealed"><span class="pm-r"></span><span class="pm-sl">${LOCK}<b>Sealed leg</b><span>revealed at kickoff</span></span><span class="mono"></span></li>`;
+        const p = byId[l.serial];
         return `<li><span class="pm-r ${l.result || ""}">${l.result ? RES[l.result] : ""}</span><a href="${p ? pageOf(p) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><span>${l.side} ${l.line} ${short(l.prop)}</span></a>
           <span class="mono">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : l.win != null ? `<small>${pct(l.win, false)} to win</small>` : ""}</span></li>`; }).join("")}</ol>
       <div class="pm-meters">${meter("Model's chance", x.model_chance, "model")}${meter("Book's chance", x.book_chance, "book")}</div>
@@ -982,7 +1017,9 @@
     const sharpOnly = () => store.get("ll-sharponly") === "1", hideBet = () => store.get("ll-hidebet") === "1";
     const drawPicks = () => {
       const all = openNow.filter((p) => p.phase === "open" && p.units);
-      if (!all.length || !(unitNow > 0)) { $("s-picks").innerHTML = ""; return; }
+      const nSealed = sealedOpen().length;
+      const sealedNote = nSealed ? `<p class="sl-note">${LOCK} ${nSealed} more pick${nSealed === 1 ? " is" : "s are"} sealed for members${D.join_url ? ` &middot; <a href="${esc(D.join_url)}">unlock them</a>` : ""}.</p>` : "";
+      if (!all.length || !(unitNow > 0)) { $("s-picks").innerHTML = unitNow > 0 ? sealedNote : ""; return; }
       const pool = sharpOnly() ? all.filter((p) => p.sharp === "agrees") : all;
       const stake = (p) => roundStake(p.units * unitNow), sum = (ps) => ps.reduce((t, p) => t + stake(p), 0);
       const done = pool.filter(iBet), left = pool.filter((p) => !iBet(p)), rows = hideBet() ? left : pool;
@@ -996,7 +1033,7 @@
               <td><b>${esc(nm(p))}</b>${p.sharp === "agrees" ? ` <span class="tsh" title="Sharp agrees">sharp &#10003;</span>` : ""}<small>${p.side} ${p.line} ${esc(MKT(p.prop).short || MKT(p.prop).label)} &middot; ${odds(p.price)} ${esc(abbr(p.book))} &middot; ${when(p.kick_utc, p.kick)}</small></td>
               <td class="num opt">${p.units.toFixed(1)}u</td><td class="num"><b>${money(st)}</b></td><td class="num opt">${money(st * (toDec(p.price) - 1))}</td><td class="tbtn">${betButton(p)}</td></tr>`; }).join("")}
           </tbody></table></div>` : `<div class="empty">${pool.length ? "Every pick here is marked as bet." : "No open Sharp-agrees picks right now."}</div>`}
-        <p class="ps-fine">Tick a pick after you place it. Ticks stay in this browser on this device only (nothing is sent anywhere), and each ${PERIOD.toLowerCase()} starts fresh. Bet buttons open the book; nothing is placed for you.</p>`;
+        ${sealedNote}<p class="ps-fine">Tick a pick after you place it. Ticks stay in this browser on this device only (nothing is sent anywhere), and each ${PERIOD.toLowerCase()} starts fresh. Bet buttons open the book; nothing is placed for you.</p>`;
     };
     $("s-picks").addEventListener("click", (e) => { const b = e.target.closest("[data-sh]"); if (b) { store.set("ll-sharponly", b.dataset.sh); sizeOut(); } });
     $("s-picks").addEventListener("change", (e) => {
