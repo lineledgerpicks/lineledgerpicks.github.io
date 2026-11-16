@@ -59,9 +59,15 @@ const safeNext = (n) => (n && n.startsWith("/") && !n.startsWith("//") ? n : "/w
 // ---------------------------------------------------------------------------------------------- Whop
 async function whopJSON(url, token, init = {}) {
   const res = await fetch(url, { ...init, headers: { ...(init.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
-  if (!res.ok) throw new Error(`${url.split("?")[0]} -> ${res.status}`);
+  if (!res.ok) {                                   // "token-400-invalid_grant": the step, the status, Whop's error code
+    const err = await res.json().catch(() => ({}));
+    const code = String(typeof err.error === "string" ? err.error : (err.error && (err.error.type || err.error.code)) || err.code || "").replace(/[^a-z_]/gi, "").slice(0, 40);
+    const step = url.includes("/token") ? "token" : url.includes("/userinfo") ? "userinfo" : url.includes("/access/") ? "access" : "whop";
+    throw new Error(`${step}-${res.status}${code ? "-" + code : ""}`);
+  }
   return res.json();
 }
+const why = (e) => String((e && e.message) || e).replace(/[^a-z0-9_-]/gi, "").slice(0, 60);
 async function hasAccess(env, userId, token) {
   const r = await whopJSON(`${apiBase(env)}/users/${encodeURIComponent(userId)}/access/${encodeURIComponent(env.WHOP_PRODUCT_ID)}`, token);
   return !!r.has_access && r.access_level !== "no_access";
@@ -84,19 +90,24 @@ async function login(req, env) {
 async function callback(req, env) {
   const url = new URL(req.url), c = cookies(req);
   const st = await unseal(env, c.ll_oauth);
-  if (url.searchParams.get("error") || !st || st.s !== url.searchParams.get("state")) return redirect("/?signin=failed", [cookie(env, "ll_oauth", "", 0)]);
+  const fail = (reason) => { console.error("sign-in failed:", reason); return redirect(`/?signin=failed&why=${reason}`, [cookie(env, "ll_oauth", "", 0)]); };
+  if (url.searchParams.get("error")) return fail(`denied-${why(url.searchParams.get("error"))}`);
+  if (!st) return fail("no-state-cookie");
+  if (st.s !== url.searchParams.get("state")) return fail("state-mismatch");
+  let tokens, me;
   try {
-    const tokens = await whopJSON(`${oauthBase(env)}/token`, null, { method: "POST", headers: { "Content-Type": "application/json" },
+    tokens = await whopJSON(`${oauthBase(env)}/token`, null, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ grant_type: "authorization_code", code: url.searchParams.get("code"), redirect_uri: `${env.SITE}/auth/callback`,
         client_id: env.WHOP_CLIENT_ID, code_verifier: st.v, ...(env.WHOP_CLIENT_SECRET ? { client_secret: env.WHOP_CLIENT_SECRET } : {}) }) });
-    const me = await whopJSON(`${oauthBase(env)}/userinfo`, tokens.access_token);
-    const member = await checkWithFallback(env, me.sub, tokens.access_token);
-    const s = await seal(env, { u: me.sub, name: me.preferred_username || me.name || "", m: member, c: now(), exp: now() + SESSION_S });
-    return redirect(member ? st.n : "/#pricing", [cookie(env, "ll_oauth", "", 0), cookie(env, "ll_s", s, SESSION_S),
-      cookie(env, "ll_in", "1", SESSION_S, false), cookie(env, "ll_m", member ? "1" : "0", SESSION_S, false)]);
-  } catch (e) {
-    return redirect("/?signin=failed", [cookie(env, "ll_oauth", "", 0)]);
-  }
+    me = await whopJSON(`${oauthBase(env)}/userinfo`, tokens.access_token);
+  } catch (e) { return fail(why(e)); }
+  let member = false, note = "";
+  try { member = await checkWithFallback(env, me.sub, tokens.access_token); }
+  catch (e) { note = why(e); console.error("access check failed:", note); }   // signed in anyway, as a free account
+  const s = await seal(env, { u: me.sub, name: me.preferred_username || me.name || "", m: member, c: note ? 0 : now(), exp: now() + SESSION_S });
+  const to = note ? `/?signin=nocheck&why=${note}` : member ? st.n : "/#pricing";
+  return redirect(to, [cookie(env, "ll_oauth", "", 0), cookie(env, "ll_s", s, SESSION_S),
+    cookie(env, "ll_in", "1", SESSION_S, false), cookie(env, "ll_m", member ? "1" : "0", SESSION_S, false)]);
 }
 
 function logout(env) {
