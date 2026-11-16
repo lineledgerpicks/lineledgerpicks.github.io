@@ -14,11 +14,15 @@
     if (!D.login_url) return "";
     const back = encodeURIComponent(location.pathname + location.search + location.hash);
     if (!SIGNED_IN) return `<a class="${cls}" href="${esc(D.login_url)}?next=${back}">Log in</a>`;
-    const out = `<a class="${cls} ghost" href="/auth/logout">Log out</a>`;
-    const dc = MEMBER && D.discord_link && ck("ll_d") !== "1"
-      ? `<a class="${cls} dc" href="/auth/discord" title="Get the members' Discord channel: phone alerts for every pick">${brand("discord", 16)} Connect Discord</a>` : "";
-    return MEMBER ? `${dc}<span class="${cls} badge-m" title="Signed in: you see every pick">&#10003; Member</span>${out}`
-      : `${D.join_url ? `<a class="${cls} up" href="${esc(D.join_url)}">Upgrade</a>` : ""}${out}`;
+    const linkDc = MEMBER && D.discord_link && ck("ll_d") !== "1";
+    const items = [
+      linkDc ? `<a class="dc" href="/auth/discord" title="Get the members' Discord channel: phone alerts for every pick">${brand("discord", 16)} Connect Discord</a>` : "",
+      !MEMBER && D.join_url ? `<a class="up" href="${esc(D.join_url)}">Upgrade: every pick</a>` : "",
+      `<a href="/auth/logout">Log out</a>`].join("");
+    if (cls !== "navlogin") return items;                                 // the phone's More sheet: plain rows
+    // the top bar: one account button, its menu holds the rest (keeps the bar from crowding the tabs)
+    return `<details class="acct"><summary class="navlogin ${MEMBER ? "badge-m" : ""}">${MEMBER ? "&#10003; Member" : "Account"}${linkDc ? `<i class="acct-dot" title="Connect Discord"></i>` : ""}<i class="acct-car" aria-hidden="true"></i></summary>
+      <div class="acct-pop">${items}</div></details>`;
   }
   { const q = new URLSearchParams(location.search).get("discord");
     if (q && q !== "cancelled" && typeof alert === "function") setTimeout(() => alert(q === "not-member"
@@ -150,8 +154,8 @@
     $("msheet").hidden = !open; $("bmore").setAttribute("aria-expanded", String(open)); document.body.classList.toggle("sheet-open", open);
     if (was !== open) moveGlass(open ? $("bmore") : bbHome()); };
   $("bmore").addEventListener("click", (e) => { e.stopPropagation(); setSheet($("msheet").hidden); });
-  const closeMenus = () => { setSheet(false); document.querySelectorAll(".navmenu[open]").forEach((d) => d.removeAttribute("open")); };
-  document.addEventListener("click", (e) => { if (!e.target.closest(".navmenu, .ms-in, #bmore")) closeMenus(); });
+  const closeMenus = () => { setSheet(false); document.querySelectorAll(".navmenu[open], .acct[open]").forEach((d) => d.removeAttribute("open")); };
+  document.addEventListener("click", (e) => { if (!e.target.closest(".navmenu, .acct, .ms-in, #bmore")) closeMenus(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
   $("updated").textContent = `Last updated ${D.updated} ET.`;
   $("theme").addEventListener("click", () => {
