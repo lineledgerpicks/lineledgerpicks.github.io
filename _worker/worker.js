@@ -40,6 +40,21 @@ async function unseal(env, value) {
   } catch (e) { return null; }
 }
 
+// the member's Whop refresh token rides in their session cookie, encrypted (AES-GCM, key derived from SESSION_KEY)
+async function rtKey(env) {
+  const raw = await crypto.subtle.digest("SHA-256", enc.encode(`refresh-token:${env.SESSION_KEY}`));
+  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function hide(env, text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await rtKey(env), enc.encode(text));
+  return b64u(new Uint8Array([...iv, ...new Uint8Array(ct)]));
+}
+async function reveal(env, blob) {
+  const raw = unb64u(blob);
+  return dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, await rtKey(env), raw.slice(12)));
+}
+
 function cookies(req) {
   const out = {};
   (req.headers.get("Cookie") || "").split(/;\s*/).forEach((kv) => { const i = kv.indexOf("="); if (i > 0) out[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); });
@@ -93,11 +108,17 @@ async function login(req, env) {
 // code -> tokens.  Whop's guide uses PKCE alone (no secret), so that goes first; if Whop wants the app to identify
 // itself, the secret is sent in the body, then as HTTP Basic.  A rejected client doesn't use up the code.
 async function exchange(env, code, verifier) {
+  return tokenRequest(env, { grant_type: "authorization_code", code, redirect_uri: `${env.SITE}/auth/callback`, code_verifier: verifier });
+}
+// a member's refresh token -> fresh tokens (to re-check access with their own login, which Whop allows)
+async function refresh(env, refreshToken) {
+  return tokenRequest(env, { grant_type: "refresh_token", refresh_token: refreshToken });
+}
+async function tokenRequest(env, grant) {
   const clean = (v) => String(v || "").trim().replace(/^[A-Za-z_ ]+[=:]\s*/, "").replace(/^["']|["']$/g, "").trim();   // a pasted "NAME=value" or quotes
   const secret = clean(env.WHOP_CLIENT_SECRET), id = clean(env.WHOP_CLIENT_ID);
-  const base = { grant_type: "authorization_code", code, redirect_uri: `${env.SITE}/auth/callback`, client_id: id, code_verifier: verifier };
-  const tries = [[base, {}]];
-  if (secret) tries.push([{ ...base, client_secret: secret }, {}], [base, { Authorization: `Basic ${btoa(`${id}:${secret}`)}` }]);
+  const base = { ...grant, client_id: id };
+  const tries = secret ? [[{ ...base, client_secret: secret }, {}], [base, { Authorization: `Basic ${btoa(`${id}:${secret}`)}` }], [base, {}]] : [[base, {}]];
   let last;
   for (const [body, extra] of tries) {
     try {
@@ -125,7 +146,8 @@ async function callback(req, env) {
   let member = false, note = "";
   try { member = await checkWithFallback(env, me.sub, tokens.access_token); }
   catch (e) { note = why(e); console.error("access check failed:", note); }   // signed in anyway, as a free account
-  const s = await seal(env, { u: me.sub, name: me.preferred_username || me.name || "", m: member, c: note ? 0 : now(), exp: now() + SESSION_S });
+  const s = await seal(env, { u: me.sub, name: me.preferred_username || me.name || "", m: member, c: note ? 0 : now(), exp: now() + SESSION_S,
+    ...(tokens.refresh_token ? { rt: await hide(env, tokens.refresh_token) } : {}) });
   const to = note ? `/?signin=nocheck&why=${note}` : member ? st.n : "/#pricing";
   return redirect(to, [cookie(env, "ll_oauth", "", 0), cookie(env, "ll_s", s, SESSION_S),
     cookie(env, "ll_in", "1", SESSION_S, false), cookie(env, "ll_m", member ? "1" : "0", SESSION_S, false)]);
@@ -140,11 +162,22 @@ async function session(req, env, force = false) {
   const s = await unseal(env, cookies(req).ll_s);
   if (!s) return [null, []];
   if (!force && now() - s.c < RECHECK_S) return [s, []];
-  try {
-    s.m = await hasAccess(env, s.u, apiKey(env));
-    s.c = now();
-  } catch (e) {
-    s.err = why(e);                                          // shown by /api/me, so a broken re-check is visible
+  // with the member's own login first (the way the sign-in check works), then the app's key
+  const errs = [];
+  let done = false;
+  if (s.rt) {
+    try {
+      const t = await refresh(env, await reveal(env, s.rt));
+      if (t.refresh_token) s.rt = await hide(env, t.refresh_token);   // Whop may rotate it
+      s.m = await hasAccess(env, s.u, t.access_token);
+      done = true;
+    } catch (e) { errs.push(`login:${why(e)}`); }
+  }
+  if (!done && env.WHOP_API_KEY) {
+    try { s.m = await hasAccess(env, s.u, apiKey(env)); done = true; } catch (e) { errs.push(`key:${why(e)}`); }
+  }
+  if (done) { s.c = now(); delete s.err; } else {
+    s.err = errs.join(",") || "no-way-to-check";             // shown by /api/me, so a broken re-check is visible
     console.error("access re-check failed:", s.err);
     if (now() - s.c > GRACE_S) s.m = false;                  // can't confirm for a day: treat as not a member
     else return [s, []];
