@@ -63,7 +63,8 @@ async function whopJSON(url, token, init = {}) {
     const err = await res.json().catch(() => ({}));
     const code = String(typeof err.error === "string" ? err.error : (err.error && (err.error.type || err.error.code)) || err.code || "").replace(/[^a-z_]/gi, "").slice(0, 40);
     const step = url.includes("/token") ? "token" : url.includes("/userinfo") ? "userinfo" : url.includes("/access/") ? "access" : "whop";
-    throw new Error(`${step}-${res.status}${code ? "-" + code : ""}`);
+    const desc = String(err.error_description || "").toLowerCase().replace(/[^a-z_ ]/g, "").trim().replace(/ +/g, "_").slice(0, 40);
+    throw new Error(`${step}-${res.status}${code ? "-" + code : ""}${desc ? "-" + desc : ""}`);
   }
   return res.json();
 }
@@ -90,7 +91,8 @@ async function login(req, env) {
 // code -> tokens.  Whop's guide uses PKCE alone (no secret), so that goes first; if Whop wants the app to identify
 // itself, the secret is sent in the body, then as HTTP Basic.  A rejected client doesn't use up the code.
 async function exchange(env, code, verifier) {
-  const secret = (env.WHOP_CLIENT_SECRET || "").trim(), id = (env.WHOP_CLIENT_ID || "").trim();
+  const clean = (v) => String(v || "").trim().replace(/^[A-Za-z_ ]+[=:]\s*/, "").replace(/^["']|["']$/g, "").trim();   // a pasted "NAME=value" or quotes
+  const secret = clean(env.WHOP_CLIENT_SECRET), id = clean(env.WHOP_CLIENT_ID);
   const base = { grant_type: "authorization_code", code, redirect_uri: `${env.SITE}/auth/callback`, client_id: id, code_verifier: verifier };
   const tries = [[base, {}]];
   if (secret) tries.push([{ ...base, client_secret: secret }, {}], [base, { Authorization: `Basic ${btoa(`${id}:${secret}`)}` }]);
