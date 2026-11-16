@@ -87,6 +87,25 @@ async function login(req, env) {
   return redirect(`${oauthBase(env)}/authorize?${p}`, [cookie(env, "ll_oauth", tmp, 600)]);
 }
 
+// code -> tokens.  Whop's guide uses PKCE alone (no secret), so that goes first; if Whop wants the app to identify
+// itself, the secret is sent in the body, then as HTTP Basic.  A rejected client doesn't use up the code.
+async function exchange(env, code, verifier) {
+  const secret = (env.WHOP_CLIENT_SECRET || "").trim(), id = (env.WHOP_CLIENT_ID || "").trim();
+  const base = { grant_type: "authorization_code", code, redirect_uri: `${env.SITE}/auth/callback`, client_id: id, code_verifier: verifier };
+  const tries = [[base, {}]];
+  if (secret) tries.push([{ ...base, client_secret: secret }, {}], [base, { Authorization: `Basic ${btoa(`${id}:${secret}`)}` }]);
+  let last;
+  for (const [body, extra] of tries) {
+    try {
+      return await whopJSON(`${oauthBase(env)}/token`, null, { method: "POST", headers: { "Content-Type": "application/json", ...extra }, body: JSON.stringify(body) });
+    } catch (e) {
+      last = e;
+      if (!/invalid_client|unauthorized_client|-401/.test(String(e.message))) throw e;   // only retry "who are you" errors
+    }
+  }
+  throw last;
+}
+
 async function callback(req, env) {
   const url = new URL(req.url), c = cookies(req);
   const st = await unseal(env, c.ll_oauth);
@@ -96,9 +115,7 @@ async function callback(req, env) {
   if (st.s !== url.searchParams.get("state")) return fail("state-mismatch");
   let tokens, me;
   try {
-    tokens = await whopJSON(`${oauthBase(env)}/token`, null, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ grant_type: "authorization_code", code: url.searchParams.get("code"), redirect_uri: `${env.SITE}/auth/callback`,
-        client_id: env.WHOP_CLIENT_ID, code_verifier: st.v, ...(env.WHOP_CLIENT_SECRET ? { client_secret: env.WHOP_CLIENT_SECRET } : {}) }) });
+    tokens = await exchange(env, url.searchParams.get("code"), st.v);
     me = await whopJSON(`${oauthBase(env)}/userinfo`, tokens.access_token);
   } catch (e) { return fail(why(e)); }
   let member = false, note = "";
