@@ -12,6 +12,10 @@
   "vars": {
     "WHOP_CLIENT_ID": "app_QqLTYh2VpKukW5",
     "WHOP_PRODUCT_ID": "prod_UAoPTkQjvJAQX",
-    "SITE": "https://lineledgerpicks.com"
-  }
+    "SITE": "https://lineledgerpicks.com",
+    "DISCORD_CLIENT_ID": "1571949512598229192",
+    "DISCORD_GUILD_ID": "1421193448551219352",
+    "DISCORD_ROLE_ID": "1571773177158307900"
+  },
+  "kv_namespaces": [{ "binding": "LINKS", "id": "dbea0ee9d5d1492f91431d0f3dd2f933" }]
 }
