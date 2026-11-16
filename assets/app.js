@@ -15,9 +15,14 @@
     const back = encodeURIComponent(location.pathname + location.search + location.hash);
     if (!SIGNED_IN) return `<a class="${cls}" href="${esc(D.login_url)}?next=${back}">Log in</a>`;
     const out = `<a class="${cls} ghost" href="/auth/logout">Log out</a>`;
-    return MEMBER ? `<span class="${cls} badge-m" title="Signed in: you see every pick">&#10003; Member</span>${out}`
+    const dc = MEMBER && D.discord_link && ck("ll_d") !== "1"
+      ? `<a class="${cls} dc" href="/auth/discord" title="Get the members' Discord channel: phone alerts for every pick">${brand("discord", 16)} Connect Discord</a>` : "";
+    return MEMBER ? `${dc}<span class="${cls} badge-m" title="Signed in: you see every pick">&#10003; Member</span>${out}`
       : `${D.join_url ? `<a class="${cls} up" href="${esc(D.join_url)}">Upgrade</a>` : ""}${out}`;
   }
+  { const q = new URLSearchParams(location.search).get("discord");
+    if (q && q !== "cancelled" && typeof alert === "function") setTimeout(() => alert(q === "not-member"
+      ? "Connecting Discord is for members. Start your free trial first." : "Discord couldn't be connected. Please try again, or message us on X."), 300); }
   const sealedOpen = () => SEALED.filter((p) => !p.kick_utc || new Date(p.kick_utc) > Date.now());
   const LOCK = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
   const page = document.body.dataset.page;
@@ -514,7 +519,8 @@
   function notify() {
     const feed = `${D.site_url || ""}feed.xml`;
     return `<section class="notify"><div><div class="eyebrow">Never miss a pick</div><h2>Get alerts</h2></div><div class="ways">
-      ${D.discord ? `<a class="way" href="${esc(D.discord)}" target="_blank" rel="noopener"><b>${brand("discord", 22)} Discord</b><span>Free. Every pick posts in #alerts the moment it's made, so your phone buzzes before the line moves.</span></a>` : ""}
+      ${MEMBER && D.discord_link ? `<a class="way" href="/auth/discord"><b>${brand("discord", 22)} Discord</b><span>${ck("ll_d") === "1" ? "Linked: every pick posts in #alerts. Tap to re-link if you lost access." : "Connect your Discord to join the members' #alerts channel: your phone buzzes the moment a pick is posted."}</span></a>`
+        : D.discord ? `<a class="way" href="${esc(D.discord)}" target="_blank" rel="noopener"><b>${brand("discord", 22)} Discord</b><span>Free. Every pick posts in #alerts the moment it's made, so your phone buzzes before the line moves.</span></a>` : ""}
       ${D.x ? `<a class="way" href="https://x.com/${esc(D.x)}" target="_blank" rel="noopener"><b>${brand("x", 20)} X</b><span>Follow <span class="mono">@${esc(D.x)}</span> for the pick of the day and every week's results.</span></a>` : ""}
       <a class="way" href="feed.xml"><b>RSS feed</b><span>Add <span class="mono">${esc(feed)}</span> to any feed reader app and switch on alerts for new items.</span></a>
       ${standalone() ? "" : `<a class="way" href="#" id="install"><b>Add to home screen</b><span>iPhone: tap Share, then Add to Home Screen. Android: tap the menu, then Install app. It opens full screen, like an app.</span></a>`}</div></section>`;

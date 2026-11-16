@@ -154,7 +154,7 @@ async function callback(req, env) {
 }
 
 function logout(env) {
-  return redirect("/", ["ll_s", "ll_in", "ll_m", "ll_oauth"].map((n) => cookie(env, n, "", 0, n === "ll_s" || n === "ll_oauth")));
+  return redirect("/", ["ll_s", "ll_in", "ll_m", "ll_d", "ll_oauth"].map((n) => cookie(env, n, "", 0, n === "ll_s" || n === "ll_oauth")));
 }
 
 // the session, re-checked with Whop when it's older than RECHECK_S; returns [session or null, Set-Cookie headers]
@@ -182,7 +182,91 @@ async function session(req, env, force = false) {
     if (now() - s.c > GRACE_S) s.m = false;                  // can't confirm for a day: treat as not a member
     else return [s, []];
   }
+  if (!s.m && s.d) await discordRole(env, s.d, false).catch(() => {});   // lapsed: the members' channel goes too
   return [s, [cookie(env, "ll_s", await seal(env, s), SESSION_S), cookie(env, "ll_m", s.m ? "1" : "0", SESSION_S, false)]];
+}
+
+// ---------------------------------------------------------------------------------------------- Discord
+// A member links Discord once (/auth/discord): our bot adds them to the server with the Member role.  The link
+// (Whop user -> Discord user) is kept in KV, so when Whop says a membership ended (/api/whop-webhook) the bot
+// takes the role away, and gives it back if they rejoin.  Vars: DISCORD_CLIENT_ID, DISCORD_GUILD_ID,
+// DISCORD_ROLE_ID; secrets: DISCORD_CLIENT_SECRET, DISCORD_BOT_TOKEN, WHOP_WEBHOOK_SECRET; KV binding: LINKS.
+const DISCORD = "https://discord.com/api/v10";
+const KEEPS_ACCESS = new Set(["trialing", "active", "past_due", "completed", "canceling"]);
+
+async function discordRole(env, discordId, give) {
+  const res = await fetch(`${env.DISCORD_API || DISCORD}/guilds/${env.DISCORD_GUILD_ID}/members/${discordId}/roles/${env.DISCORD_ROLE_ID}`,
+    { method: give ? "PUT" : "DELETE", headers: { Authorization: `Bot ${String(env.DISCORD_BOT_TOKEN || "").trim()}`, "X-Audit-Log-Reason": give ? "Line Ledger member" : "Membership ended" } });
+  if (!res.ok && res.status !== 404) throw new Error(`discord-role-${res.status}`);   // 404: they left the server
+}
+
+async function discordStart(req, env) {
+  const [s] = await session(req, env);
+  if (!s) return redirect(`/auth/login?next=${encodeURIComponent("/auth/discord")}`);
+  if (!s.m) return redirect("/#pricing");
+  const state = rand(16);
+  const p = new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, response_type: "code", redirect_uri: `${env.SITE}/auth/discord/callback`,
+    scope: "identify guilds.join", state });
+  return redirect(`${env.DISCORD_AUTH || "https://discord.com/oauth2/authorize"}?${p}`, [cookie(env, "ll_dstate", await seal(env, { s: state, exp: now() + 600 }), 600)]);
+}
+
+async function discordCallback(req, env) {
+  const url = new URL(req.url), c = cookies(req);
+  const st = await unseal(env, c.ll_dstate);
+  const done = (q, set = []) => redirect(`/week?discord=${q}`, [cookie(env, "ll_dstate", "", 0), ...set]);
+  if (url.searchParams.get("error")) return done("cancelled");
+  if (!st || st.s !== url.searchParams.get("state")) return done("failed-state");
+  const [s] = await session(req, env);
+  if (!s || !s.m) return done("not-member");
+  try {
+    const form = new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, client_secret: String(env.DISCORD_CLIENT_SECRET || "").trim(),
+      grant_type: "authorization_code", code: url.searchParams.get("code"), redirect_uri: `${env.SITE}/auth/discord/callback` });
+    const tok = await fetch(`${env.DISCORD_API || DISCORD}/oauth2/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+    if (!tok.ok) throw new Error(`discord-token-${tok.status}`);
+    const { access_token } = await tok.json();
+    const meRes = await fetch(`${env.DISCORD_API || DISCORD}/users/@me`, { headers: { Authorization: `Bearer ${access_token}` } });
+    if (!meRes.ok) throw new Error(`discord-me-${meRes.status}`);
+    const me = await meRes.json();
+    // join the server with the role (201), or - already in it (204) - just give the role
+    const join = await fetch(`${env.DISCORD_API || DISCORD}/guilds/${env.DISCORD_GUILD_ID}/members/${me.id}`, { method: "PUT",
+      headers: { Authorization: `Bot ${String(env.DISCORD_BOT_TOKEN || "").trim()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token, roles: [env.DISCORD_ROLE_ID] }) });
+    if (join.status === 204) await discordRole(env, me.id, true);
+    else if (!join.ok) throw new Error(`discord-join-${join.status}`);
+    if (env.LINKS) await env.LINKS.put(`w:${s.u}`, JSON.stringify({ d: me.id, at: now() }));
+    s.d = me.id;
+    return redirect(`https://discord.com/channels/${env.DISCORD_GUILD_ID}`, [cookie(env, "ll_dstate", "", 0),
+      cookie(env, "ll_s", await seal(env, s), SESSION_S), cookie(env, "ll_d", "1", SESSION_S, false)]);
+  } catch (e) {
+    console.error("discord link failed:", why(e));
+    return done(`failed-${why(e)}`);
+  }
+}
+
+// Whop -> us when a membership changes (Standard Webhooks signature, HMAC-SHA256 over "id.timestamp.body")
+async function whopWebhook(req, env) {
+  const body = await req.text(), id = req.headers.get("webhook-id") || "", ts = req.headers.get("webhook-timestamp") || "";
+  const sigs = (req.headers.get("webhook-signature") || "").split(" ").map((x) => x.split(",")[1]).filter(Boolean);
+  if (!env.WHOP_WEBHOOK_SECRET || !id || !sigs.length || Math.abs(now() - Number(ts)) > 300) return new Response("bad request", { status: 400 });
+  const secret = String(env.WHOP_WEBHOOK_SECRET).trim(), msg = enc.encode(`${id}.${ts}.${body}`);
+  // Whop says the key is the ws_ secret itself; Standard Webhooks libraries base64-decode it - accept either
+  const keys = [enc.encode(secret)];
+  try { keys.push(unb64u(secret.replace(/^(ws|whsec)_/, "").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""))); } catch (e) {}
+  let ok = false;
+  for (const k of keys) {
+    const key = await crypto.subtle.importKey("raw", k, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    for (const sg of sigs) { try { if (await crypto.subtle.verify("HMAC", key, Uint8Array.from(atob(sg), (ch) => ch.charCodeAt(0)), msg)) ok = true; } catch (e) {} }
+  }
+  if (!ok) return new Response("bad signature", { status: 401 });
+  const ev = JSON.parse(body), m = ev.data || {};
+  const productId = m.product_id || (m.product && m.product.id);
+  if (!/^membership\./.test(ev.type || "") || productId !== env.WHOP_PRODUCT_ID || !m.user_id || !env.LINKS) return new Response("ok");
+  const link = await env.LINKS.get(`w:${m.user_id}`, "json");
+  if (link && link.d) {
+    try { await discordRole(env, link.d, KEEPS_ACCESS.has(m.status)); }
+    catch (e) { console.error("webhook role change failed:", why(e)); return new Response("retry", { status: 500 }); }   // Whop retries
+  }
+  return new Response("ok");
 }
 
 async function membersData(env, origin) {
@@ -207,6 +291,9 @@ export default {
       if (url.pathname === "/auth/login") return await login(req, env);
       if (url.pathname === "/auth/callback") return await callback(req, env);
       if (url.pathname === "/auth/logout") return logout(env);
+      if (url.pathname === "/auth/discord") return await discordStart(req, env);
+      if (url.pathname === "/auth/discord/callback") return await discordCallback(req, env);
+      if (url.pathname === "/api/whop-webhook" && req.method === "POST") return await whopWebhook(req, env);
       if (url.pathname === "/api/me") {
         const [s, set] = await session(req, env, url.searchParams.get("recheck") === "1");   // ?recheck=1: ask Whop now
         return send(JSON.stringify(s ? { in: true, member: !!s.m, name: s.name, checked_min_ago: Math.round((now() - s.c) / 60), ...(s.err ? { recheck_error: s.err } : {}) } : { in: false, member: false }), "application/json", set);

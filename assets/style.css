@@ -1360,3 +1360,5 @@ body[data-page="landing"] #hero { min-width: 0; max-width: 100%; }
 .navlogin.badge-m { border-color: #2f6b4f; color: #6fd6a2; cursor: default; }
 .navlogin.up { background: #eeb04f; border-color: #eeb04f; color: #142139; }
 .msheet .badge-m { color: #6fd6a2; }
+.navlogin.dc { display: inline-flex; align-items: center; gap: 6px; border-color: #5865f2; color: #c9cdfb; }
+.navlogin.dc .brand-discord { color: #8c96ff; }
