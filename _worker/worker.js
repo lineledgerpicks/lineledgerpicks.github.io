@@ -68,6 +68,8 @@ async function whopJSON(url, token, init = {}) {
   }
   return res.json();
 }
+// the app's API key: just the apik_... token, even if a "WHOP_API_KEY=..." line (or two) was pasted around it
+const apiKey = (env) => { const v = String(env.WHOP_API_KEY || ""); const m = v.match(/apik_[A-Za-z0-9_.-]+/); return m ? m[0] : v.trim(); };
 const why = (e) => String((e && e.message) || e).replace(/[^a-z0-9_-]/gi, "").slice(0, 60);
 async function hasAccess(env, userId, token) {
   const r = await whopJSON(`${apiBase(env)}/users/${encodeURIComponent(userId)}/access/${encodeURIComponent(env.WHOP_PRODUCT_ID)}`, token);
@@ -75,7 +77,7 @@ async function hasAccess(env, userId, token) {
 }
 async function checkWithFallback(env, userId, userToken) {       // the member's token first, then the app's key
   try { if (userToken) return await hasAccess(env, userId, userToken); } catch (e) { if (!env.WHOP_API_KEY) throw e; }
-  return hasAccess(env, userId, env.WHOP_API_KEY);
+  return hasAccess(env, userId, apiKey(env));
 }
 
 async function login(req, env) {
@@ -134,12 +136,12 @@ function logout(env) {
 }
 
 // the session, re-checked with Whop when it's older than RECHECK_S; returns [session or null, Set-Cookie headers]
-async function session(req, env) {
+async function session(req, env, force = false) {
   const s = await unseal(env, cookies(req).ll_s);
   if (!s) return [null, []];
-  if (now() - s.c < RECHECK_S) return [s, []];
+  if (!force && now() - s.c < RECHECK_S) return [s, []];
   try {
-    s.m = await hasAccess(env, s.u, env.WHOP_API_KEY);
+    s.m = await hasAccess(env, s.u, apiKey(env));
     s.c = now();
   } catch (e) {
     s.err = why(e);                                          // shown by /api/me, so a broken re-check is visible
@@ -173,7 +175,7 @@ export default {
       if (url.pathname === "/auth/callback") return await callback(req, env);
       if (url.pathname === "/auth/logout") return logout(env);
       if (url.pathname === "/api/me") {
-        const [s, set] = await session(req, env);
+        const [s, set] = await session(req, env, url.searchParams.get("recheck") === "1");   // ?recheck=1: ask Whop now
         return send(JSON.stringify(s ? { in: true, member: !!s.m, name: s.name, checked_min_ago: Math.round((now() - s.c) / 60), ...(s.err ? { recheck_error: s.err } : {}) } : { in: false, member: false }), "application/json", set);
       }
       if (url.pathname === "/api/members.js") {
