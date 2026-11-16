@@ -142,6 +142,8 @@ async function session(req, env) {
     s.m = await hasAccess(env, s.u, env.WHOP_API_KEY);
     s.c = now();
   } catch (e) {
+    s.err = why(e);                                          // shown by /api/me, so a broken re-check is visible
+    console.error("access re-check failed:", s.err);
     if (now() - s.c > GRACE_S) s.m = false;                  // can't confirm for a day: treat as not a member
     else return [s, []];
   }
@@ -172,7 +174,7 @@ export default {
       if (url.pathname === "/auth/logout") return logout(env);
       if (url.pathname === "/api/me") {
         const [s, set] = await session(req, env);
-        return send(JSON.stringify(s ? { in: true, member: !!s.m, name: s.name } : { in: false, member: false }), "application/json", set);
+        return send(JSON.stringify(s ? { in: true, member: !!s.m, name: s.name, checked_min_ago: Math.round((now() - s.c) / 60), ...(s.err ? { recheck_error: s.err } : {}) } : { in: false, member: false }), "application/json", set);
       }
       if (url.pathname === "/api/members.js") {
         const [s, set] = await session(req, env);
