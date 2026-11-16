@@ -5,8 +5,19 @@
   const D = window.DATA;
   // sealed picks: open picks members see first.  They stay out of every list and record, and show as seals in This
   // week's Open section until kickoff, when the next publish reveals them (site.public_view)
+  const ck = (n) => (String(document.cookie || "").match(new RegExp(`(?:^|; )${n}=([^;]*)`)) || [])[1];
+  const SIGNED_IN = ck("ll_in") === "1", MEMBER = !!window.MEMBER;   // MEMBER: /api/members.js loaded the full picks
   const SEALED = [];
   Object.values(D.props || {}).forEach((P) => { P.picks = P.picks.filter((p) => !(p.sealed && SEALED.push(p))); });
+  // the account button: Log in; once signed in, Member (or Upgrade) and Log out
+  function account(cls) {
+    if (!D.login_url) return "";
+    const back = encodeURIComponent(location.pathname + location.search + location.hash);
+    if (!SIGNED_IN) return `<a class="${cls}" href="${esc(D.login_url)}?next=${back}">Log in</a>`;
+    const out = `<a class="${cls} ghost" href="/auth/logout">Log out</a>`;
+    return MEMBER ? `<span class="${cls} badge-m" title="Signed in: you see every pick">&#10003; Member</span>${out}`
+      : `${D.join_url ? `<a class="${cls} up" href="${esc(D.join_url)}">Upgrade</a>` : ""}${out}`;
+  }
   const sealedOpen = () => SEALED.filter((p) => !p.kick_utc || new Date(p.kick_utc) > Date.now());
   const LOCK = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
   const page = document.body.dataset.page;
@@ -106,7 +117,7 @@
     + `<details class="navmenu"><summary${inRecords ? ' aria-current="page"' : ""}>Records<i aria-hidden="true"></i></summary><div class="navpop">
         ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}</a>`).join("")}
         <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a>${fl("fl-menu")}</div></details>`;
-  document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<span class="social">${fl("soc")}</span>`);
+  document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<span class="social">${fl("soc")}</span>${account("navlogin")}`);
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, everything else in the More sheet
   const tabsFit = places;                                                  // This week, Results, Parlays, Tools + More
@@ -115,7 +126,7 @@
       <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
       ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
-      <div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
+      ${D.login_url ? `<div class="eyebrow">Account</div>${account("")}` : ""}<div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
   const openCount = openNow.length + sealedOpen().length;
   if (openCount) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openCount; b.hidden = false; });
   const navbar = $("navbar");
@@ -1172,6 +1183,176 @@
   }
 
   setTimeout(() => { reveal(); countUp(); }, 0);
-  const PAGES = { home, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
+  /* ------------------------------------------------------------------ landing page (lineledgerpicks.com/)
+     What a new visitor sees first: what it is, the live record, what members get (shown with the site's real
+     components, filled with the last fully graded week - public picks only), how to check us, pricing, FAQ.
+     Old links to the picks (#ph-..., ?week=) and the home-screen app go straight to This week instead. */
+  function landing() {
+    if (/^#ph-/.test(location.hash) || /[?&](week|season)=/.test(location.search) || standalone()) {
+      location.replace(href(F.home) + location.search + location.hash); return;
+    }
+    const R = (MKT("receptions") || {}).record || [], r = R[0] || {};
+    const offer = D.offer || {}, price = offer.price || "$15", per = offer.per || "month", trial = offer.trial || "";
+    const join = D.join_url, login = D.login_url, signup = D.signup_url;
+    const ctaText = trial ? `Start your ${esc(trial)}` : "Join Line Ledger";
+    const cta = (cls, text = ctaText) => MEMBER ? `<a class="lp-btn ${cls}" href="${href(F.home)}">See this week's picks</a>` : join ? `<a class="lp-btn ${cls}" href="${esc(join)}">${text}</a>` : `<span class="lp-btn ${cls} off">Memberships open soon</span>`;
+    // the showcase week: the latest week whose receptions picks are all graded (public, so nothing sealed shows)
+    const rec = allPicks.filter((p) => p.prop === "receptions" && !p.paper);
+    const wkKeys = [...new Set(rec.map((p) => `${p.season}-${String(p.week).padStart(2, "0")}`))].sort().reverse();
+    const showKey = wkKeys.find((k) => rec.filter((p) => `${p.season}-${String(p.week).padStart(2, "0")}` === k).every((p) => p.phase === "final"));
+    const show = showKey ? rec.filter((p) => `${p.season}-${String(p.week).padStart(2, "0")}` === showKey).sort(byKick) : [];
+    const showWeek = show.length ? show[0].week : D.week;
+    const sample = (n) => show.slice(0, n);                                   // first by kickoff: not cherry-picked
+    const typ = typicalWeek(), unit = typ && typ.units ? 1000 * 0.25 / typ.units : null;
+    const stake = (p) => unit ? roundStake(p.units * unit) : null;
+    const matchup = (p) => p.home ? `${p.opp} @ ${p.team}` : `${p.team} @ ${p.opp}`;
+    const win = (title, body, cls = "") => `<div class="win ${cls}"><div class="win-bar"><i></i><i></i><i></i><span>${title}</span></div><div class="win-body">${body}</div></div>`;
+    const alertLine = (p) => `<div class="lpa-l"><b>${esc(nm(p))}</b> ${p.side[0]} ${p.line} rec &middot; <code>${odds(p.price)}</code> ${esc(abbr(p.book))} &middot; <b>${(p.units || 0).toFixed(1)}u</b> &middot; ${p.win ? p.win.toFixed(0) : ""}%${p.sharp === "agrees" ? " &#9989;" : ""}</div>`;
+    const alertCard = (all, cap = 9) => { const ps = all.filter((p) => [...new Set(all.map(matchup))].slice(0, 3).includes(matchup(p))).slice(0, cap), games = [...new Set(ps.map(matchup))], n = ps.length;
+      return `<div class="lp-alert"><div class="lpa-top"><span class="lpa-av">LL</span><b>Line Ledger</b><span class="lpa-app">APP</span><span class="lpa-t">${esc(PERIOD)} ${showWeek}</span></div>
+      <div class="lpa-head">&#128276; ${esc(PERIOD)} ${showWeek} &middot; ${n} new picks</div>
+      <div class="lpa-card">${games.map((g) => `<div class="lpa-g">${esc(g)}</div>${ps.filter((p) => matchup(p) === g).map(alertLine).join("")}`).join("")}</div></div>`; };
+    const sizeRows = (ps, ticks) => ps.map((p, i) => `<tr${ticks && ticks[i] ? ' class="isbet"' : ""}>${ticks ? `<td class="tck"><input type="checkbox" tabindex="-1"${ticks[i] ? " checked" : ""} aria-hidden="true"></td>` : ""}
+        <td><b>${esc(nm(p))}</b>${p.sharp === "agrees" ? ` <span class="tsh">sharp &#10003;</span>` : ""}<small>${p.side} ${p.line} rec &middot; ${odds(p.price)} ${esc(abbr(p.book))}</small></td>
+        <td class="num">${(p.units || 0).toFixed(1)}u</td><td class="num"><b>${stake(p) != null ? money(stake(p)) : "&ndash;"}</b></td></tr>`).join("");
+    const ticks = [1, 1, 0, 1, 0], trk = sample(5), done = trk.filter((p, i) => ticks[i]), left = trk.filter((p, i) => !ticks[i]);
+    const sum = (ps) => ps.reduce((t, p) => t + (stake(p) || 0), 0);
+    const stat = (big, small, cls = "") => `<div><b class="${cls}">${big}</b><small>${small}</small></div>`;
+
+    $("hero").innerHTML = `<div class="lp-hero">
+      <div class="lp-copy lp-rv"><div class="eyebrow" style="color:#aeb9cc">NFL receptions props &middot; ${D.season} season</div>
+        <h1>Every pick stamped. <em>Every result kept.</em></h1>
+        <p>A model that prices every NFL receptions line at DraftKings and FanDuel. Members get each pick the moment it's made, sized for their bankroll, one tap from the bet slip. Every result stays public, wins and losses.</p>
+        <div class="lp-ctas">${cta("gold")}<a class="lp-btn ghost" href="receptions.html">See the full record</a></div>
+        <p class="lp-fine">${trial ? `${esc(trial)}, then ${esc(price)}/${esc(per)}. Cancel anytime. ` : ""}21+.${login ? ` <span class="nowrap">Members: <a href="${esc(login)}">log in</a>.</span>` : ""}</p></div>
+      <div class="lp-shot lp-rv" aria-hidden="true">
+        ${win("lineledgerpicks.com/week", `<div class="lp-tix">${sample(3).map(stubTicket).join("")}</div>`, "lp-back")}
+        ${show.length ? `<div class="lp-front">${alertCard(show, 6)}</div>` : ""}</div></div>
+      ${ledgerStrip(rec)}
+      <div class="lp-stats lp-rv" data-fx="count" aria-label="The receptions record">
+        ${stat(wl(r), "receptions record")}${stat(r.n ? pct(r.win, false) : "&ndash;", "win rate")}
+        ${stat(r.sized != null ? num(r.sized, 1, true) + "u" : "&ndash;", "units won", tone(r.sized))}${stat(pct(r.sized_roi), "return on units risked", tone(r.sized_roi))}
+        ${stat("100%", "of picks time-stamped")}</div>
+      <p class="lp-stats-note">Every receptions pick since ${esc(D.since)}, at its posted size, updated with every result. <a href="receptions.html">See every pick &rarr;</a></p>`;
+
+    const rows = [
+      ["Instant alerts", "Every pick, the moment it's made",
+        "Picks post to the members' Discord the second the model makes them, so your phone buzzes before the line moves. One tidy card per drop, grouped by game, biggest bets first.",
+        show.length ? alertCard(show) : ""],
+      ["This week's picks", "Every open pick, ready to bet",
+        "Player, line, price, book and how sure the model is, on one page. Sharp-agrees picks are marked, and every ticket opens to the full detail: the lines at each book, the market's number, the closing line.",
+        win("lineledgerpicks.com/week", `<div class="lp-list">${listView(sample(8))}</div>`, "wide")],
+      ["Bet sizing", "Sized for your bankroll, in dollars",
+        `Enter your bankroll once. Every pick shows the exact bet, rounded the way you'd actually type it, plus a button straight to DraftKings or FanDuel.${unit ? ` On a $1,000 bankroll, 1 unit is about ${money(unit)}.` : ""}`,
+        win("lineledgerpicks.com/tools", `<div class="lp-size"><div class="lp-unit"><span>Your bankroll <b>$1,000</b></span><span>1 unit <b>${unit ? money(unit) : "&ndash;"}</b></span></div>
+          <table class="tpk"><thead><tr><th>Pick</th><th class="num">Size</th><th class="num">Your bet</th></tr></thead><tbody>${sizeRows(sample(5))}</tbody></table></div>`)],
+      ["Bet tracker", "Know what's left to bet",
+        "Tick picks as you place them. The page keeps count of what you've bet, what's left, and how much, so you never double up or miss one.",
+        win("lineledgerpicks.com/tools", `<div class="lp-size"><p class="tpk-sum"><b>${done.length} of ${trk.length}</b> bet &middot; ${money(sum(done))} placed &middot; <b>${money(sum(left))}</b> left to bet</p>
+          <table class="tpk"><tbody>${sizeRows(trk, ticks)}</tbody></table></div>`)],
+      ["The record", "A record you can check, not just trust",
+        "Every pick since launch, graded at the close, with the time it was posted. Wins and losses stay up for good, so you can judge it before you pay a cent.",
+        MKT("receptions") ? win("lineledgerpicks.com/receptions", `<div class="lp-chart" data-fx="draw">${unitsChart(MKT("receptions"))}</div>`) : ""]];
+    $("app").innerHTML = `
+      <section class="lp-how lp-rv"><div class="eyebrow">How it works</div><h2>From the model to your bet slip</h2>
+        <ol class="lp-steps">
+          <li><b>The model prices every line</b><span>It projects each receiver's catches from his recent role and the matchup, then compares that to the lines at DraftKings and FanDuel.</span></li>
+          <li><b>Members get the pick instantly</b><span>When a line looks wrong by enough, it's a pick: posted to members right away, sized, with a bet button.</span></li>
+          <li><b>Every result goes on the record</b><span>Picks are stamped when made, sealed until kickoff, then revealed and graded in public. Nothing is edited or removed.</span></li></ol></section>
+      <section class="lp-feats" id="features"><div class="eyebrow">What members get</div><h2>Everything you need to bet the picks</h2>
+        ${show.length ? `<p class="lp-sub">Shown with real picks from ${esc(PERIOD)} ${showWeek}, the last fully graded ${esc(PERIOD.toLowerCase())}.</p>` : ""}
+        ${rows.filter((x) => x[3]).map(([eb, t, d, vis], i) => `<div class="lp-row${i % 2 ? " flip" : ""}${vis.includes("lp-list") ? " wide-v" : ""}">
+          <div class="lp-row-t lp-rv"><div class="eyebrow">${eb}</div><h3>${t}</h3><p>${d}</p></div>
+          <div class="lp-row-v lp-rv" aria-hidden="true"><div class="lp-pan">${vis}</div></div></div>`).join("")}</section>
+      <section class="lp-proof lp-rv"><div class="lp-proof-in"><div><div class="eyebrow" style="color:#aeb9cc">Don't trust us. Check us.</div><h2>A record nobody can edit, including us</h2>
+          <p>Before kickoff, every pick is posted publicly as a <b>seal</b>: a code made from the pick that's impossible to fake or change later. At kickoff the pick is revealed, and anyone can check it against the seal.${sealedOpen().length ? ` Right now ${sealedOpen().length} pick${sealedOpen().length === 1 ? " is" : "s are"} sealed on the site.` : ""}</p>
+          <div class="lp-ctas"><a class="lp-btn ghost" href="${href(F.home)}">See this week's seals</a><a class="lp-btn ghost" href="method.html">How it works</a></div></div>
+        <ol class="lp-seal" data-fx="seal"><li><b>Sealed</b><code>7f3a9c41e2&hellip;</code><span>posted before kickoff</span></li><li><b>Revealed</b><code>UNDER 2.5 &middot; -130</code><span>at kickoff</span></li><li><b>Checked</b><code>&#10003; matches</code><span>by anyone</span></li></ol></div></section>
+      <section class="lp-price" id="pricing"><div class="eyebrow">Pricing</div><h2>Simple pricing</h2>
+        <div class="lp-plans">
+          <article class="lp-plan lp-rv"><h3>Free account</h3><div class="lp-amt"><b>$0</b></div><ul>
+            <li>A free pick every game day</li><li>This week's sealed picks, revealed at kickoff</li><li>Bet sizing, odds and player lookup tools</li><li>The full public record</li></ul>
+            <a class="lp-btn ghost dark" href="${esc(signup || href(F.home))}">${signup ? "Create a free account" : "See this week"}</a></article>
+          <article class="lp-plan pro lp-rv"><span class="lp-tag">Members</span><h3>Line Ledger</h3><div class="lp-amt"><b>${esc(price)}</b><span>/${esc(per)}</span></div>
+            ${trial ? `<p class="lp-trial">${esc(trial)}</p>` : ""}<ul>
+            <li>Every pick, the moment it's made</li><li>Phone alerts in the members' Discord</li><li>Sized in dollars for your bankroll</li><li>One-tap DraftKings / FanDuel buttons</li><li>Your bet tracker</li><li>Cancel anytime</li></ul>
+            ${cta("gold")}${login && !SIGNED_IN ? `<a class="lp-login" href="${esc(login)}?next=%2Fweek">Already a member? Log in</a>` : ""}</article></div></section>
+      <section class="lp-faq lp-rv"><div class="eyebrow">FAQ</div><h2>Questions</h2>
+        ${[["What exactly do I get?", `Every receptions pick the model makes, the moment it's made: in the members' Discord channel (with a phone notification) and on the site, with the size in dollars for your bankroll and a button to its sportsbook. Plus the bet tracker.${trial ? ` It starts with a ${esc(trial)}.` : ""}`],
+           ["What's the free account?", "A free login that shows the free pick of each game day, this week's sealed picks (revealed at kickoff), and the tools. No card needed."],
+           ["What's a unit?", `A fixed slice of your bankroll, so every bet is sized the same way. Enter your bankroll once and the site turns units into dollars for you. The free <a href="tools.html">bet sizing tool</a> shows how.`],
+           ["Which sportsbooks?", "DraftKings and FanDuel. Each pick is priced at whichever of the two has the better price when it's made."],
+           ["Is this a guarantee?", "No. These are a model's opinions, not certainties, and even good picks lose often. Every result is kept public so you can judge the record yourself. Bet only what you can afford to lose."],
+           ["Can I check the record before I pay?", `Yes, it's public with no login: <a href="receptions.html">every receptions pick</a> since launch, graded, with the time it was posted.`],
+           ["How do I cancel?", "Anytime, in one click from your account. Access ends at the end of the period you paid for."],
+           ["Who can join?", "Adults 21 and over, where sports betting is legal. If gambling stops being fun, call or text 1-800-GAMBLER (free, 24/7)."]]
+          .map(([q, a]) => `<details class="drawer"><summary>${q}</summary><p>${a}</p></details>`).join("")}</section>
+      <section class="lp-end lp-rv"><h2>Get the next pick the moment it's made.</h2><div class="lp-ctas">${cta("gold")}</div>
+        <p class="lp-fine">21+ only. For information and entertainment; no pick is a guarantee and past results don't predict future ones. Gambling problem? Call or text 1-800-GAMBLER.</p></section>`;
+    document.querySelectorAll(".win .cstub, .win .ticket").forEach((e) => e.classList.add("in"));   // a picture: no per-ticket fade
+    revealOnScroll();
+  }
+  // sections slide up and fade in as they come into view; the hero's product shot drifts a little slower than the
+  // page.  Off for anyone whose device asks for reduced motion (and where the browser can't tell when things show)
+  function revealOnScroll() {
+    const els = [...document.querySelectorAll(".lp-rv, [data-fx]")];
+    if (typeof IntersectionObserver === "undefined" || /[?&]still/.test(location.search)) { els.forEach((e) => e.classList.add("in")); return; }   // ?still: no motion (screenshots)
+    document.documentElement.classList.add("lp-rv-on");
+    const io = new IntersectionObserver((xs) => xs.forEach((x) => { if (!x.isIntersecting) return;
+      x.target.classList.add("in"); io.unobserve(x.target); const f = FX[x.target.dataset.fx]; if (f) f(x.target); }), { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+    els.forEach((e) => io.observe(e));
+    const strip = document.querySelector(".lp-ledger svg");
+    const back = document.querySelector(".lp-back"), front = document.querySelector(".lp-front");
+    const pans = [...document.querySelectorAll(".lp-pan")];
+    let ticking = false;
+    const frame = () => {
+      const y = Math.min(scrollY, 900), wide = innerWidth >= 900, h = innerHeight;
+      if (back && wide) back.style.transform = `translateY(${y * -0.06}px)`;
+      if (front && wide) front.style.transform = `translateY(${y * -0.16}px) rotate(1.2deg)`;
+      if (strip) strip.style.transform = `translateX(${y * -0.12}px)`;
+      pans.forEach((el) => {                    // 0 when the picture is centred on screen, up to +-1 at the edges
+        const r = el.parentElement.getBoundingClientRect(), k = Math.max(-1, Math.min(1, (r.top + r.height / 2 - h / 2) / h));
+        el.style.transform = `translateY(${k * (wide ? 70 : 36)}px)`;
+      });
+      ticking = false;
+    };
+    addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(frame); } }, { passive: true });
+    frame();
+  }
+
+  // the record as a barcode (the brand's line): the last graded picks in order, a bar up for each win and down for
+  // each loss, as tall as what it won or lost; a gold dot where today is
+  function ledgerStrip(ps) {
+    const g = ps.filter((p) => p.phase === "final" && p.pl_u != null).sort(byKick).slice(-140);
+    if (g.length < 10) return "";
+    const W = g.length * 9 + 30, mid = 50, top = Math.max(...g.map((p) => Math.abs(p.pl_u))) || 1;
+    const bars = g.map((p, i) => { const h = 6 + 38 * Math.min(1, Math.abs(p.pl_u) / top), up = p.pl_u > 0;
+      return `<rect x="${i * 9}" y="${up ? mid - h : mid}" width="3" height="${h.toFixed(1)}" rx="1.5" class="${up ? "w" : p.pl_u < 0 ? "l" : "p"}" style="--d:${i * 9}ms"/>`; }).join("");
+    return `<div class="lp-ledger-wrap"><div class="lp-ledger lp-rv" aria-hidden="true"><svg viewBox="0 0 ${W} 100" preserveAspectRatio="xMinYMid meet" style="width:${W}px">
+      <line x1="0" x2="${W + 2000}" y1="${mid}" y2="${mid}" class="base"/>${bars}<circle cx="${g.length * 9 + 12}" cy="${mid}" r="6" class="now"/></svg></div>
+      <span class="lp-ledger-k">The record, pick by pick (last ${g.length}): <i class="w"></i> win <i class="l"></i> loss</span></div>`;
+  }
+  // landing effects, run once as each piece comes into view
+  const FX = {
+    count(el) {                                   // the record's numbers count up
+      el.querySelectorAll("b").forEach((b) => { const m = b.textContent.match(/^([+-]?)(\d+(?:\.\d+)?)(.*)$/);
+        if (!m || /^-\d/.test(m[3])) return;
+        const [, sign, n, rest] = m, to = parseFloat(n), dec = (n.split(".")[1] || "").length, t0 = performance.now();
+        const step = (t) => { const k = Math.min(1, (t - t0) / 1100), q = 1 - Math.pow(1 - k, 3); b.textContent = `${sign}${(to * q).toFixed(dec)}${rest}`; if (k < 1) requestAnimationFrame(step); };
+        requestAnimationFrame(step); });
+    },
+    draw() {},                                    // the chart draws itself: CSS, on .in
+    seal(el) {                                    // the seal scrambles, the pick is revealed, then it checks out
+      const codes = el.querySelectorAll("code"), finals = [...codes].map((c) => c.innerHTML), hex = "0123456789abcdef";
+      codes.forEach((c, i) => { if (i) c.style.opacity = "0"; });
+      let n = 0;
+      const t = setInterval(() => { codes[0].textContent = Array.from({ length: 10 }, () => hex[Math.floor(Math.random() * 16)]).join("") + "\u2026";
+        if (++n > 14) { clearInterval(t); codes[0].innerHTML = finals[0];
+          setTimeout(() => { codes[1].style.opacity = "1"; codes[1].classList.add("pop"); }, 350);
+          setTimeout(() => { codes[2].style.opacity = "1"; codes[2].classList.add("pop"); }, 1100); } }, 60);
+    },
+  };
+
+  const PAGES = { landing, home, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
   (PAGES[page] || home)();
 })();

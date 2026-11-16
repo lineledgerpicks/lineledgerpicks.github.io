@@ -1,0 +1,17 @@
+// Cloudflare deploys the site from this file (Workers Builds runs `npx wrangler deploy` on every push).
+// Written by `nfl.py publish` from src/site_assets/worker/wrangler.jsonc - edit it there.
+{
+  "name": "lineledgerpicks-github-io",
+  "main": "_worker/worker.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/auth/*", "/api/*", "/members.enc"]
+  },
+  "vars": {
+    "WHOP_CLIENT_ID": "app_QqLTYh2VpKukW5",
+    "WHOP_PRODUCT_ID": "prod_UAoPTkQjvJAQX",
+    "SITE": "https://lineledgerpicks.com"
+  }
+}
