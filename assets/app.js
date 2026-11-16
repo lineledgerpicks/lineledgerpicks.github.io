@@ -1360,5 +1360,23 @@
   };
 
   const PAGES = { landing, home, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
-  (PAGES[page] || home)();
+  // the free-account gate: This week, Tools and Parlays ask visitors to sign in (free) first; the landing page, the
+  // record, results, player pages and How it works stay open to everyone
+  function gatePage() {
+    const back = encodeURIComponent(location.pathname + location.search + location.hash);
+    const what = { home: `This ${PERIOD.toLowerCase()}'s picks`, tools: "The betting tools", parlays: "The model's parlays" }[page] || "This page";
+    const nSealed = sealedOpen().length;
+    hero("Free account", `${esc(what)}, <em>free with an account</em>`, "Sign in with Whop in a few seconds. No card needed.");
+    $("app").innerHTML = `<section class="gate"><div class="gate-card">
+        <div class="gate-lock">${LOCK}</div>
+        <h2>Sign in to keep going</h2>
+        <ul><li>Today's free pick, every game day</li><li>${nSealed ? `${nSealed} sealed pick${nSealed === 1 ? "" : "s"} this ${PERIOD.toLowerCase()}, revealed at kickoff` : `This ${PERIOD.toLowerCase()}'s sealed picks, revealed at kickoff`}</li>
+          <li>Bet sizing, odds and player lookup tools</li></ul>
+        <div class="lp-ctas"><a class="lp-btn gold" href="${esc(D.login_url)}?next=${back}">Create a free account</a><a class="lp-btn ghost dark" href="${esc(D.login_url)}?next=${back}">Sign in</a></div>
+        <p class="muted">Already paying? Sign in and every pick shows up here. Want them all now? ${D.join_url ? `<a href="${esc(D.join_url)}">Start your ${esc((D.offer || {}).trial || "membership")}</a>.` : ""}</p>
+        <p class="muted">The full record stays open to everyone: <a href="receptions.html">every receptions pick</a>, <a href="${F.results}">results by ${PERIOD.toLowerCase()}</a>.</p>
+      </div></section>`;
+  }
+  if (D.gate && D.login_url && !SIGNED_IN && ["home", "tools", "parlays"].includes(page)) gatePage();
+  else (PAGES[page] || home)();
 })();
