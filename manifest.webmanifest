@@ -1,7 +1,7 @@
 {
  "name": "Line Ledger",
  "short_name": "Line Ledger",
- "start_url": "week.html",
+ "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "background_color": "#142139",

@@ -1392,3 +1392,127 @@ body[data-page="landing"] #hero { min-width: 0; max-width: 100%; }
 .navbar .mark { flex: none; }
 .navbar .tabs { min-width: 0; }
 @media (max-width: 1180px) { .navhow { display: none; } .how-in-menu { display: block !important; } }
+
+/* the landing page is a sales page: no floating bottom bar on phones (only signed-out visitors ever see it) */
+@media (max-width: 680px) {
+  body[data-page="landing"] .bbar { display: none !important; }
+  body[data-page="landing"] { padding-bottom: env(safe-area-inset-bottom, 0px) !important; }
+}
+
+/* ---- the app shell (Nov 16): a menu down the left side on desktop and laptop, the full width of the screen ---- */
+.side { display: none; }
+@media (min-width: 1024px) {
+  body[data-side] { padding-left: 248px; }
+  body[data-side] .navbar { display: none; }
+  body[data-side] .ctl { top: 0; }
+  body[data-side] .wrap { max-width: 1680px; padding-inline: clamp(20px, 2.6vw, 44px); }
+  .side { display: flex; flex-direction: column; gap: 14px; position: fixed; inset: 0 auto 0 0; width: 248px; z-index: 60;
+    padding: 18px 12px 14px; background: var(--board); border-right: 1px solid #1d2a45; overflow-y: auto; scrollbar-width: thin; }
+  .side-mark { display: flex; align-items: center; gap: 10px; padding: 4px 8px 10px; color: var(--board-text); text-decoration: none;
+    font: 800 22px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; }
+  .side-mark i { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--board-text);
+    font: 700 11px/1 var(--mono); font-style: normal; }
+  .side nav { display: grid; gap: 14px; }
+  .side-g { display: grid; gap: 2px; }
+  .side-h { padding: 4px 10px 6px; color: #7d8aa5; font: 700 11px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; }
+  .side-g a { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 10px; color: #c9d2e2; text-decoration: none;
+    font: 600 14.5px/1.1 var(--body); border: 1px solid transparent; transition: background .15s ease, color .15s ease; }
+  .side-g a svg { flex: none; color: #8f9bb3; }
+  .side-g a:hover { background: #16223a; color: #fff; }
+  .side-g a[aria-current="page"] { background: #1c2b4d; border-color: #2e4372; color: #fff; }
+  .side-g a[aria-current="page"] svg { color: var(--board-text); }
+  .side-g a .badge { margin-left: auto; }
+  .side .sports { display: flex; gap: 4px; padding: 3px; border: 1px solid #2c3b5c; border-radius: 999px; }
+  .side .sports a { flex: 1; text-align: center; padding: 6px; border-radius: 999px; color: #c9d2e2; text-decoration: none; font: 700 12px/1 var(--body); }
+  .side .sports a[aria-current="true"] { background: #fff; color: #142139; }
+  .side-foot { margin-top: auto; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #1d2a45; }
+  .side-acct { display: grid; gap: 2px; }
+  .side-who { padding: 4px 10px 6px; color: #aeb9cc; font-size: 13px; } .side-who .m { color: #6fd6a2; }
+  .side-acct a { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 10px; color: #c9d2e2; text-decoration: none; font: 600 14px/1 var(--body); }
+  .side-acct a:hover { background: #16223a; color: #fff; }
+  .side-acct a.dc { color: #c9cdfb; } .side-acct a.dc .brand-discord { color: #8c96ff; }
+  .side-acct a.up { color: #eeb04f; }
+  .side-acct a.side-login { color: #142139; background: #eeb04f; justify-content: center; font-weight: 700; }
+  .side-acct a.side-login:hover { background: #f6c06a; color: #142139; }
+  .side-row { display: flex; gap: 6px; padding: 0 6px; }
+  .side-row .soc { width: 34px; height: 34px; }
+  .side-theme { background: transparent; cursor: pointer; }
+}
+/* the landing page's live preview of the site (an iframe in "tour" mode): no phone bar, nothing to click */
+html.tour .bbar, html.tour .msheet { display: none !important; }
+html.tour body { padding-bottom: 0 !important; }
+
+/* landing: the live site in a window */
+.lp-live { display: grid; gap: 18px; }
+.lp-live-t { display: grid; gap: 10px; max-width: 70ch; }
+.lp-live-t h2 { font-size: clamp(30px, 4.4vw, 46px); text-transform: uppercase; line-height: 1; }
+.lp-live-t p { color: var(--muted); margin: 0; font-size: 16.5px; }
+.lp-live-win { border-radius: 16px; overflow: hidden; border: 1px solid var(--rule); background: var(--board);
+  box-shadow: 0 50px 100px -50px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .03); }
+.lp-live-win .win-bar { background: #0e1830; border-bottom-color: #1d2a45; }
+.lp-live-win .win-bar span { background: #16223a; color: #aeb9cc; }
+.lp-live-tag { margin-left: auto; padding: 3px 9px; border-radius: 999px; background: rgba(82, 194, 141, .15); color: #6fd6a2; font: 700 11px/1 var(--body);
+  letter-spacing: .08em; text-transform: uppercase; }
+.lp-live-tag::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #52c28d; vertical-align: 1px; animation: lp-pulse 2s ease-in-out infinite; }
+.lp-live-view { position: relative; overflow: hidden; height: 480px; background: var(--paper); }
+.lp-live-view iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; pointer-events: none; }
+
+/* landing: the guided demo's cursor and step captions */
+.lp-cursor { position: absolute; left: 50%; top: 40%; z-index: 3; width: 22px; height: 22px; pointer-events: none; opacity: 0;
+  transition: left .75s cubic-bezier(.45, .05, .2, 1), top .75s cubic-bezier(.45, .05, .2, 1), opacity .3s ease;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 2l16 9.5-7 1.5-3.5 7z' fill='%23fff' stroke='%23142139' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat 0 0 / contain;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .5)); }
+.lp-cursor.on { opacity: 1; }
+.lp-cursor::after { content: ""; position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #eeb04f; opacity: 0; }
+.lp-cursor.tap::after { animation: lp-tap .35s ease-out; }
+@keyframes lp-tap { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+/* This week: a compact header - record chips instead of the big boards */
+.rchips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rchip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1px solid #2c3b5c; background: rgba(255, 255, 255, .04);
+  color: #c3cddd; text-decoration: none; font-size: 13.5px; }
+.rchip em { font-style: normal; color: #8f9bb3; } .rchip b { font: 700 13.5px/1 var(--mono); color: #fff; }
+.rchip b.up { color: #6fd6a2; } .rchip b.down { color: #f08a8a; }
+.rchip:hover { border-color: #4a5c82; } .rchip.more { color: var(--board-text); }
+body[data-page="home"] .hero h1 { font-size: clamp(38px, 5vw, 60px); }
+/* Tools > Alerts */
+.al-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 14px; }
+.al-card { display: grid; gap: 10px; align-content: start; padding: 20px; border-radius: 16px; border: 1px solid var(--rule); background: var(--ticket); }
+.al-card.main { grid-column: 1 / -1; border-color: #5865f2; background: linear-gradient(135deg, color-mix(in srgb, #5865f2 12%, var(--ticket)), var(--ticket)); }
+.al-card h3 { display: flex; align-items: center; gap: 10px; font: 800 20px/1.1 var(--display); text-transform: uppercase; }
+.al-card h3 .brand-discord { color: #5865f2; }
+.al-card p { margin: 0; color: var(--muted); } .al-card p b { color: var(--ink); } .al-card .up { color: var(--up); }
+.al-steps { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 6px; color: var(--muted); }
+.al-card .lp-btn { justify-self: start; }
+
+/* the demo's camera: the live page zooms in on what's being clicked and eases back out */
+.lp-stage { position: absolute; inset: 0; }
+.lp-stage iframe { position: absolute; top: 0; left: 0; }
+
+/* the preview window glows */
+.lp-live-win { border-color: rgba(238, 176, 79, .45); box-shadow: 0 0 0 1px rgba(238, 176, 79, .25), 0 0 34px -4px rgba(238, 176, 79, .35),
+  0 0 90px -10px rgba(88, 101, 242, .35), 0 50px 100px -50px rgba(0, 0, 0, .8); animation: lp-glow 6s ease-in-out infinite; }
+@keyframes lp-glow { 50% { box-shadow: 0 0 0 1px rgba(238, 176, 79, .35), 0 0 46px -2px rgba(238, 176, 79, .45), 0 0 120px -10px rgba(88, 101, 242, .45), 0 50px 100px -50px rgba(0, 0, 0, .8); } }
+/* Open / Live / Final: tabs instead of stacked sections */
+.phtabs { display: flex; gap: 6px; padding: 4px; margin: 4px 0 12px; border: 1px solid var(--rule); border-radius: 14px; background: var(--ticket); }
+.pht { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 12px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--muted); font: 800 18px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; transition: background .2s ease, color .2s ease; }
+.pht .count { min-width: 26px; padding: 3px 7px; border-radius: 999px; background: var(--soft); color: var(--ink); font: 700 12px/1 var(--mono); }
+.pht:hover { color: var(--ink); }
+.pht[aria-selected="true"] { background: var(--board); color: #fff; }
+.pht-open[aria-selected="true"] .count { background: #eeb04f; color: #142139; }
+.pht-live[aria-selected="true"] .count { background: #e57070; color: #fff; }
+.pht-final[aria-selected="true"] .count { background: #52c28d; color: #0b1a12; }
+.phase .ph-sub { margin: 0 0 10px; color: var(--muted); font-size: 13.5px; }
+@media (max-width: 560px) { .pht { font-size: 15px; gap: 6px; padding: 9px 6px; } }
+
+/* the demo's highlight: a soft gold outline around what's being shown */
+.lp-ring { position: absolute; z-index: 2; pointer-events: none; border-radius: 12px; opacity: 0; border: 2px solid rgba(238, 176, 79, .9);
+  box-shadow: 0 0 0 4px rgba(238, 176, 79, .18), 0 0 30px rgba(238, 176, 79, .35); transition: opacity .45s ease, left .5s ease, top .5s ease, width .5s ease, height .5s ease; }
+.lp-ring.on { opacity: 1; }
+/* the tabs stick under the control bar (their top is set to the bar's height) */
+
+/* the tabs sit in the sticky control bar, right under the search row */
+.ctl .phtabs { margin: 0; }
+#phtabs-slot:empty { display: none; }
+/* desktop: the sidebar lists every tool, so the Tools page's own tab row goes (phones keep it) */
+@media (min-width: 1024px) { body[data-side] .tswitch { display: none; } }

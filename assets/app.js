@@ -1,7 +1,7 @@
 /* Line Ledger: renders every page from data.js (window.DATA, written by `python nfl.py publish`).
    Sport- and market-agnostic: tabs, pages and labels come from DATA.sports and DATA.markets, so another sport or
    market is a data change, not a code change. */
-(function () {
+window.LL_BOOT = function () {
   const D = window.DATA;
   // sealed picks: open picks members see first.  They stay out of every list and record, and show as seals in This
   // week's Open section until kickoff, when the next publish reveals them (site.public_view)
@@ -34,8 +34,10 @@
   const $ = (id) => document.getElementById(id);
   const SPORTS = D.sports && D.sports.length ? D.sports
     : [{ key: "nfl", name: "NFL", period: "Week", event: "kickoff", markets: Object.keys(D.props), files: { home: "index.html", open: "open.html", results: "results.html" } }];
+  const TOUR = !!(document.documentElement.classList && document.documentElement.classList.contains("tour")) || /[?&]tour=1/.test(location.search);
   const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                   set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+  if (TOUR) { const mem = {}; store.get = (k) => (k in mem ? mem[k] : null); store.set = (k, v) => { mem[k] = v; }; }
   // this page's sport; the shared pages (CLV, How it works) keep the sport you came from (?sport=, else the last one seen)
   const pageSport = document.body.dataset.sport;
   const SPORT = SPORTS.find((s) => s.key === (pageSport || new URLSearchParams(location.search).get("sport") || store.get("ll-sport"))) || SPORTS[0];
@@ -113,7 +115,7 @@
        ...(F.parlays ? [["parlays", F.parlays, "Parlays", "parlays"]] : []), ["tools", `tools.html${keep}`, "Tools", "tools"]]
     : [["soon", href(F.home), "Overview", "week"]];
   const records = [...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).label]), ["clv", `clv.html${keep}`, "Closing line value"]];
-  const how = ["method", `method.html${keep}`, "How it works"];
+  const how = ["method", `method.html${keep}`, "About & how it works"];
   const follow = [...(D.discord ? [[esc(D.discord), "Discord alerts", "discord"]] : []), ...(D.x ? [[`https://x.com/${esc(D.x)}`, `X &middot; @${esc(D.x)}`, "x"]] : [])];
   const fl = (cls) => follow.map(([link, label, k]) => `<a class="${cls}" href="${link}" target="_blank" rel="noopener" aria-label="${label.replace(/&middot;/, "-")}">${brand(k)}<span>${label}</span></a>`).join("");
   const here = page === "market" ? `m:${pageMarket}` : page;
@@ -137,6 +139,34 @@
       ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
       ${D.login_url ? `<div class="eyebrow">Account</div>${account("")}` : ""}<div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
   const openCount = openNow.length + sealedOpen().length;
+  // desktop and laptop: a menu down the left side, always there (phones keep the top bar and the bottom tabs)
+  if (page !== "landing") {
+    const SI_ = { results: ICON.results, rec: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',
+      clv: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>', size: '<path d="M4 7h16M4 12h10M4 17h6"/>',
+      odds: '<circle cx="12" cy="12" r="8.5"/><path d="M9 15l6-6M9.5 9.5h.01M14.5 14.5h.01"/>', calc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M16 11h0M8 15h2M12 15h2"/>',
+      player: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.5-4 4-5.5 7-5.5s5.5 1.5 7 5.5"/>', info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>' };
+    const ico = (path) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+    const toolNow = page === "tools" ? (location.hash.slice(1) || store.get("ll-tool") || "sizing") : "";
+    const item = (link, label, icon, on, extra = "") => `<a href="${link}"${on ? ' aria-current="page"' : ""}>${ico(icon)}<span>${label}</span>${extra}</a>`;
+    const groups = [
+      ["Picks", [...places.filter(([id]) => id === "home" || id === "parlays").map(([id, link, label, ic]) =>
+        item(link, id === "home" ? `This ${PERIOD.toLowerCase()}` : label, ICON[ic], id === here, id === "home" ? `<span class="badge" data-open-count hidden></span>` : ""))]],
+      ["Record", [places.find(([id]) => id === "results")].filter(Boolean).map(([id, link, label]) => item(link, label, SI_.results, id === here))
+        .concat(records.map(([id, link, label]) => item(link, label.replace("Closing line value", "Closing line value"), id === "clv" ? SI_.clv : SI_.rec, id === here)))],
+      ["Tools", [["sizing", "Bet sizing", SI_.size], ["odds", "Odds", SI_.odds], ["parlay", "Parlay calculator", SI_.calc], ["player", "Player lookup", SI_.player], ["alerts", "Alerts", '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/>']]
+        .map(([k, label, icon]) => item(`tools.html${keep}#${k}`, label, icon, toolNow === k))],
+      ["About", [item(how[1], how[2], SI_.info, here === how[0])]]];
+    const acct = !D.login_url ? "" : `<div class="side-acct">${SIGNED_IN ? `<div class="side-who">${MEMBER ? `<b class="m">&#10003; Member</b>` : `<b>Free account</b>`}</div>` : ""}${account("side-login")}</div>`;
+    document.body.insertAdjacentHTML("afterbegin", `<aside class="side" aria-label="Menu">
+      <a class="side-mark" href="${SIGNED_IN ? href(F.home) : "./"}"><i>LL</i>Line Ledger</a>
+      ${sportSwitch}
+      <nav>${groups.map(([g, items]) => `<div class="side-g"><div class="side-h">${g}</div>${items.join("")}</div>`).join("")}</nav>
+      <div class="side-foot">${acct}
+        <div class="side-row">${follow.map(([link, label, k]) => `<a class="soc" href="${link}" target="_blank" rel="noopener" aria-label="${label.replace(/&middot;/, "-")}">${brand(k)}</a>`).join("")}
+          <button type="button" class="soc side-theme" aria-label="Switch light or dark"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button></div></div></aside>`);
+    document.body.dataset.side = "1";
+    const st = document.querySelector(".side-theme"); if (st) st.addEventListener("click", () => $("theme").click());
+  }
   if (openCount) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openCount; b.hidden = false; });
   const navbar = $("navbar");
   const onScroll = () => navbar.classList.toggle("scrolled", scrollY > 8);
@@ -154,6 +184,7 @@
     $("msheet").hidden = !open; $("bmore").setAttribute("aria-expanded", String(open)); document.body.classList.toggle("sheet-open", open);
     if (was !== open) moveGlass(open ? $("bmore") : bbHome()); };
   $("bmore").addEventListener("click", (e) => { e.stopPropagation(); setSheet($("msheet").hidden); });
+  if (SIGNED_IN && D.landing) { const m = document.querySelector(".navbar .mark"); if (m) m.setAttribute("href", href(F.home)); }
   const closeMenus = () => { setSheet(false); document.querySelectorAll(".navmenu[open], .acct[open]").forEach((d) => d.removeAttribute("open")); };
   document.addEventListener("click", (e) => { if (!e.target.closest(".navmenu, .acct, .ms-in, #bmore")) closeMenus(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
@@ -543,7 +574,7 @@
       <div class="fp-row"><span class="fp-l">View</span>${viewBar()}</div>
       ${withMarket && MK.length > 1 ? `<div class="fp-row"><span class="fp-l">Market</span>${marketSeg()}</div>` : ""}
       ${withMarket ? `<div class="fp-row"><span class="fp-l">Show</span>${filterChips()}</div>` : ""}
-      ${panel ? `<div class="fp-row"><span class="fp-l">Show</span>${panel}</div>` : ""}</div></div>`;
+      ${panel ? `<div class="fp-row"><span class="fp-l">Show</span>${panel}</div>` : ""}</div><div id="phtabs-slot"></div></div>`;
   function filterCount() {
     const b = $("fcount"), panel = $("fpanel");
     if (!b || !panel || !panel.querySelectorAll) return;
@@ -695,15 +726,24 @@
     const n = list.filter((p) => p.phase === ph).length;
     return `<a href="#ph-${ph}" class="jp-${ph}"${n ? "" : ' aria-disabled="true"'}>${title}<span>${n}</span></a>`; }).join("")}</nav>`;
   function phaseSections(list, season, week) {
-    return PHASES.map(([ph, title, sub]) => {
+    const parts = {};
+    PHASES.forEach(([ph, title, sub]) => {
       const ps = list.filter((p) => p.phase === ph).sort(byKick);
       const sl = ph === "open" ? sealedOpen().filter((p) => p.season === season && p.week === week) : [];
-      if (sl.length) return `<details class="phase ph-${ph}" id="ph-${ph}" open><summary><span class="ph-t">${title}<span class="count">${ps.length + sl.length}</span></span><span class="ph-s">${sub}</span></summary>
-        ${ps.length ? picksBlock(ps) : ""}${sealedBlock(sl)}</details>`;
       const rec = ph === "final" ? `<div class="phase-rec">${MK.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(periodRec(MKT(k), season, week))}</span>`).join("")}</div>` : "";
-      return `<details class="phase ph-${ph}" id="ph-${ph}"${ps.length ? " open" : ""}><summary><span class="ph-t">${title}<span class="count">${ps.length}</span></span><span class="ph-s">${sub}</span></summary>
-        ${rec}${ps.length ? picksBlock(ps) : `<div class="empty">Nothing ${title.toLowerCase()} ${ph === "final" ? "yet this " + PERIOD.toLowerCase() : "right now"}.</div>`}</details>`;
-    }).join("");
+      parts[ph] = { n: ps.length + sl.length, title, sub,
+        body: `${rec}${ps.length ? picksBlock(ps) : ""}${sl.length ? sealedBlock(sl) : ""}${ps.length || sl.length ? "" : `<div class="empty">Nothing ${title.toLowerCase()} ${ph === "final" ? "yet this " + PERIOD.toLowerCase() : "right now"}.</div>`}` };
+    });
+    // which tab: the one you picked; else an old #ph- link; else the first with picks in it
+    const fromHash = (location.hash.match(/^#ph-(open|live|final)$/) || [])[1];
+    let cur = state.phaseUser && parts[state.phase] ? state.phase : fromHash || PHASES.map(([ph]) => ph).find((ph) => parts[ph].n) || "open";
+    state.phase = cur;
+    const P = parts[cur];
+    const tabs = `<div class="phtabs" role="tablist" aria-label="Open, live or final">${PHASES.map(([ph, title]) =>
+        `<button type="button" role="tab" class="pht pht-${ph}" data-ph="${ph}" aria-selected="${ph === cur}"><span>${title}</span><b class="count">${parts[ph].n}</b></button>`).join("")}</div>`;
+    const slot = typeof document !== "undefined" && document.getElementById && document.getElementById("phtabs-slot");
+    if (slot) slot.innerHTML = tabs;                                   // in the sticky control bar, under the search
+    return `${slot ? "" : tabs}<div class="phase ph-${cur}" id="ph-${cur}" role="tabpanel"><p class="ph-sub">${P.sub}</p>${P.body}</div>`;
   }
 
   // the seals of this week's open picks, by game: what anyone can see before kickoff
@@ -730,16 +770,20 @@
   });
 
   function home() {
-    hero(`${esc(SPORT.name)} player props &middot; ${D.season}`, "Every pick stamped. <em>Every result kept.</em>",
-      "Player props priced against DraftKings and FanDuel, posted before the start and graded against the closing line. Nothing is edited or removed.", scoreboard(), featured());
+    const wk = allPicks.filter((p) => p.season === D.season && p.week === D.week), sl = sealedOpen().filter((p) => p.season === D.season && p.week === D.week);
+    const nOf = (ph) => wk.filter((p) => p.phase === ph).length;
+    const chips = MK.map((k) => { const P = MKT(k), r = (P.record || [])[0] || {};
+      return `<a class="rchip" href="${P.slug}.html"><em>${esc(P.short || P.label)}</em><b>${wl(r)}</b><b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 1, true) + "u" : ""}</b></a>`; }).join("");
+    hero(`${esc(SPORT.name)} player props &middot; ${D.season}`, `${PERIOD} <em>${D.week}</em>`,
+      `${nOf("open") + sl.length} open${sl.length ? ` (${sl.length} sealed)` : ""} &middot; ${nOf("live")} live &middot; ${nOf("final")} graded`,
+      `<div class="rchips">${chips}<a class="rchip more" href="${F.results}">Full record &rarr;</a></div>`, featured());
     if (state.week == null || state.week === "all") state.week = D.week;
     // one story: the record (hero), last week's recap, then this week's picks (the moving strip was a third copy of
     // the open picks; marquee() stays for any page that wants it)
     $("app").innerHTML = `
       ${homeRecap()}
-      <section><div class="head"><div><h2 id="wk-title"></h2></div></div>
-        <div id="tb"></div><div id="phases" class="phases"></div></section>
-      ${notify()}`;
+      <section><h2 id="wk-title" class="sr"></h2>
+        <div id="tb"></div><div id="phases" class="phases"></div></section>`;
     redraw = (full) => {
       if (full !== false || !$("pk-period")) $("tb").innerHTML = toolbar(pickers(allPicks, false));
       $("wk-title").textContent = `${PERIOD} ${state.week ?? "-"}, ${state.season}`;
@@ -747,6 +791,8 @@
       $("phases").innerHTML = phaseSections(list, state.season, state.week);
       afterDraw();
     };
+    document.addEventListener("click", (e) => { const b = e.target.closest("[data-ph]"); if (!b) return;
+      state.phase = b.dataset.ph; state.phaseUser = true; redraw(false); });
     redraw(true);
   }
 
@@ -754,7 +800,7 @@
   const openPage = () => location.replace(`${href(F.home)}${location.hash || "#ph-open"}`);
 
   function resultsPage() {
-    hero("Results", `${PERIOD} by <em>${PERIOD.toLowerCase()}</em>`, "Every graded pick, every market, at the size on its ticket and the stamped price. Tap a row to open that " + PERIOD.toLowerCase() + ".");
+    hero("Results", `${PERIOD} by <em>${PERIOD.toLowerCase()}</em>`, "Every graded " + PERIOD.toLowerCase() + ", at a glance.");
     const keys = [...new Set(MK.flatMap((k) => Object.keys(MKT(k).weeks)))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
     const cards = keys.map((key) => { const [season, w] = key.split("-");
       return `<a class="wkcard" href="${href(F.home)}?season=${season}&week=${w}"><div class="wk-h"><b>${PERIOD} ${w}</b><span class="muted">${season}</span></div>
@@ -770,7 +816,7 @@
   function marketPage(key) {
     const P = MKT(key);
     if (!P) { $("app").innerHTML = `<div class="empty">Nothing here yet.</div>`; return; }
-    hero(`${P.paper ? "Research desk &middot; paper picks" : "The record"} &middot; since ${D.since}`, esc(P.label), esc(P.blurb), tote(P.record, P));
+    hero(`${P.paper ? "Research desk &middot; paper picks" : "The record"} &middot; since ${D.since}`, esc(P.label), `Every pick since ${esc(D.since)}, graded at the close.`, tote(P.record, P));
     const linked = byId[decodeURIComponent(location.hash.slice(1))];
     if (linked && linked.prop === key) { state.season = linked.season; state.week = linked.week; }
     if (state.week == null) state.week = "all";
@@ -797,7 +843,7 @@
   }
 
   function clvPage() {
-    hero("The scoreboard", "Closing line <em>value</em>", "Did we get a better number than the market's final price? Over hundreds of picks, that is the clearest sign of a real edge, far more than win-loss.");
+    hero("The scoreboard", "Closing line <em>value</em>", "Did we get a better number than the market's final price? <a href=\"method.html\">What this means</a>");
     if (!MK.length) { $("app").innerHTML = `<div class="empty">No ${esc(SPORT.name)} picks have closed yet. Closing line value shows up here once they do.</div>`; return; }
     const cards = MK.map((k) => { const P = MKT(k), r = P.record[0] || {};
       const cells = [["Value vs close", pct(r.clv_ev), tone(r.clv_ev), `what each pick was worth against the closing price, vig removed (n=${r.n_clv || 0}${(r.n_clv || 0) < 50 ? ", too early to judge" : ""})`],
@@ -861,13 +907,14 @@
       <section><div><div class="eyebrow">What to expect</div><h2>Same ledger, new sport</h2></div><div class="steps">
         <div><h3>One slate a ${PERIOD.toLowerCase()}</h3><p>Picks are grouped by ${PERIOD.toLowerCase()}, with the same Open, Live and Final sections, views and search.</p></div>
         <div><h3>Its own record</h3><p>Each market gets its own page and record, graded at the stamped price and size, kept apart from the other sports.</p></div>
-        <div><h3>Same scoreboard</h3><p>Closing line value, the Sharp label and the weekly recap all work the same way.</p></div></div></section>
-      ${notify()}`;
+        <div><h3>Same scoreboard</h3><p>Closing line value, the Sharp label and the weekly recap all work the same way.</p></div></div></section>`;
   }
 
   function method() {
-    hero("How it works", "Stamped, posted, <em>graded at the close.</em>", "What every number on this site means, and why the closing line is the scoreboard.");
+    hero("About", "About &amp; <em>how it works</em>", "What Line Ledger is, how every pick is made, sealed and graded, and what every number means.");
     $("app").innerHTML = `
+      <section><div><div class="eyebrow">What this is</div><h2>Line Ledger</h2></div>
+        <p class="lede">A model that prices NFL player props (mostly receptions) at DraftKings and FanDuel. When a line looks wrong by enough, it's a pick. Every pick is stamped the moment it's made, sealed before kickoff, then revealed and graded against the closing line in public. Nothing is ever edited or removed, wins or losses. Members get every pick the moment it's made; everyone gets a free pick each game day and the full record.</p></section>
       <section><div class="steps">
         <div><h3>Stamp</h3><p>The model prices every player the books post. When it finds value, the pick, line and price are stamped and frozen, with a serial number. Later runs never change them, and nothing is ever removed.</p></div>
         <div><h3>Post</h3><p>Picks go up before the start. Every update to this site is a public commit, so anyone can check when a pick was posted in the site's history.</p></div>
@@ -894,11 +941,11 @@
         <dt>Pays</dt><dd>The legs' prices multiplied together. A book's own parlay price can differ a little.</dd>
         <dt>Book's chance</dt><dd>The chance the parlay's price implies, bookmaker's cut included.</dd>
         <dt>Model's chance</dt><dd>The legs' model chances multiplied. That holds for legs from different games, which is why each leg comes from a different game.</dd></dl></section>
-      ${notify()}
       <section><div><div class="eyebrow">Honesty notes</div><h2>What's on the record</h2></div><dl class="defs">
         ${MK.map((k) => `<dt>${esc(MKT(k).label)}</dt><dd>${esc(MKT(k).blurb)}</dd>`).join("")}
         <dt>Pre-launch</dt><dd>Picks made before this site went public (${esc(D.launch)}) are shown and counted, tagged pre-launch, because their time stamps come from our private ledger.</dd>
-        <dt>New address (Nov 3, 2026)</dt><dd>Until Nov 3, 2026 this site was published from an earlier GitHub repository. Its full history was carried over here with every original commit time, so the "verify" links on picks posted before then point to that carried-over history. The original repository is kept, privately, as the record of when those picks first went public. Picks posted from Nov 3 on are verified here directly.</dd></dl></section>`;
+        <dt>New address (Nov 3, 2026)</dt><dd>Until Nov 3, 2026 this site was published from an earlier GitHub repository. Its full history was carried over here with every original commit time, so the "verify" links on picks posted before then point to that carried-over history. The original repository is kept, privately, as the record of when those picks first went public. Picks posted from Nov 3 on are verified here directly.</dd></dl></section>
+      <section class="lp-faq" id="faq"><div><div class="eyebrow">FAQ</div><h2>Questions</h2></div>${faqHtml()}</section>`;
   }
 
   /* ------------------------------------------------------------------ parlays: the model's own, one per book
@@ -940,7 +987,7 @@
     const rec = PR.record || {};
     const recRow = (label, r) => `<tr><td>${esc(label)}</td><td class="num">${r.n || 0}</td><td class="num">${r.n ? `${r.W}-${r.L}${r.P ? "-" + r.P : ""}` : "&ndash;"}</td><td class="num ${tone(r.units)}">${r.n ? num(r.units, 2, true) + "u" : "&ndash;"}</td><td class="num opt ${tone(r.roi)}">${pct(r.roi)}</td></tr>`;
     $("app").innerHTML = `
-      <section><p class="lede">One parlay per sportsbook: three legs from different Sunday games, picked from the open picks with the highest model chance, at that book's own lines and prices. They update as prices move, then lock at the first Sunday kickoff. Only the locked parlay counts, at 1u, in its own record below. A parlay pays only if every leg wins, so it loses far more often than any single pick.</p></section>
+
       <section><div class="head"><div><h2>Parlay record</h2></div></div>
         ${rec.all && rec.all.n ? `<div class="tablebox"><table><thead><tr><th>Book</th><th class="num">Parlays</th><th class="num">W-L-P</th><th class="num">Units</th><th class="num opt">ROI</th></tr></thead><tbody>
           ${recRow("All", rec.all)}${PBOOKS.filter((b) => rec[b]).map((b) => recRow(b, rec[b])).join("")}</tbody></table></div>`
@@ -974,7 +1021,28 @@
   const TOOLS = [["sizing", "Bet sizing", "What a pick's units mean in dollars, for your bankroll."],
                  ["odds", "Odds", "What any price means: win chance, payout, and the fair price without the book's cut."],
                  ["parlay", "Parlay", "What a parlay pays and how often one like it hits."],
-                 ["player", "Player lookup", "How often a receiver went over a line this season, game by game."]];
+                 ["player", "Player lookup", "How often a receiver went over a line this season, game by game."],
+                 ["alerts", "Alerts", "Get every pick the moment it's made, on your phone."]];
+
+  // Tools > Alerts: how to follow, shaped by who's looking (member / free account / visitor)
+  function alertsPanel() {
+    const linked = ck("ll_d") === "1", feed = `${D.site_url || ""}feed.xml`;
+    const card = (cls, head, body, cta = "") => `<article class="al-card ${cls}"><h3>${head}</h3><div>${body}</div>${cta}</article>`;
+    const btn = (href, text, cls = "gold") => `<a class="lp-btn ${cls}" href="${esc(href)}"${/^https?:/.test(href) ? ' target="_blank" rel="noopener"' : ""}>${text}</a>`;
+    const steps = `<ol class="al-steps"><li>Open Discord and long-press (or right-click) <b>#alerts</b>.</li><li>Tap <b>Notification Settings</b>, then <b>All Messages</b>.</li><li>Make sure Discord's notifications are on in your phone's settings.</li></ol>`;
+    const alerts = MEMBER
+      ? card("main", `${brand("discord", 22)} Every pick, in #alerts`, linked
+          ? `<p><b class="up">&#10003; Your Discord is linked.</b> Every pick posts in <b>#alerts</b> the moment it's made, one card per drop, grouped by game.</p>${steps}`
+          : `<p>Link your Discord once: our bot adds you to the members' <b>#alerts</b> channel, where every pick posts the moment it's made.</p>${steps}`,
+          btn("/auth/discord", linked ? "Re-link Discord" : "Connect Discord", linked ? "ghost dark" : "gold"))
+      : card("main", `${brand("discord", 22)} #alerts is for members`, `<p>Members get every pick the moment it's made, in Discord's <b>#alerts</b> channel, with a phone notification, sized for their bankroll on the site.</p>`,
+          D.join_url ? btn(D.join_url, `Start your ${esc((D.offer || {}).trial || "membership")}`) : "");
+    const free = D.discord ? card("", `${brand("discord", 20)} A free pick every game day`, `<p>Everyone can join the Line Ledger Discord: the day's free pick posts in <b>#free-pick</b>.</p>`, btn(D.discord, "Join the Discord", "ghost dark")) : "";
+    const x = D.x ? card("", `${brand("x", 18)} Results and the free pick`, `<p>Follow <b>@${esc(D.x)}</b> for the free pick and every week's results.</p>`, btn(`https://x.com/${D.x}`, `Follow @${esc(D.x)}`, "ghost dark")) : "";
+    const home = standalone() ? "" : card("", "Add Line Ledger to your home screen", `<p><b>iPhone:</b> in Safari, tap Share, then <b>Add to Home Screen</b>. <b>Android:</b> tap the menu, then <b>Install app</b>. It opens full screen, straight to the picks.</p>`);
+    const rss = card("", "RSS feed", `<p>Add <span class="mono">${esc(feed)}</span> to any feed reader app and switch on its alerts.</p>`);
+    return `<div class="al-grid">${alerts}${free}${x}${home}${rss}</div>`;
+  }
 
   function toolsPage() {
     hero("Free tools", "Bettor's <em>toolkit</em>", "Nothing you type here leaves your browser.");
@@ -1009,7 +1077,8 @@
         <div class="tool"><div class="trow">
           <div class="tf grow tcombo"><span id="l-ql">Player</span><input id="l-q" role="combobox" aria-labelledby="l-ql" aria-expanded="false" aria-controls="l-list" aria-autocomplete="list" placeholder="Search a receiver, e.g. Chase" autocomplete="off" spellcheck="false"><ul id="l-list" class="tlist" role="listbox" hidden></ul></div>
           <div class="tf tline"><span>Line</span><div class="tstep"><button type="button" data-ls="-1" aria-label="Lower line">&minus;</button><input id="l-line" inputmode="decimal" value="4.5" aria-label="Line"><button type="button" data-ls="1" aria-label="Raise line">+</button></div></div></div>
-          <div id="l-ours"></div><div id="l-out"><div class="empty">Loading players&hellip;</div></div></div></div></section>`;
+          <div id="l-ours"></div><div id="l-out"><div class="empty">Loading players&hellip;</div></div></div></div>
+      <div id="t-alerts" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[4][2]}</p>${alertsPanel()}</div></section>`;
     const show = (k, push) => {
       document.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tool === k)));
       document.querySelectorAll(".tpanel").forEach((s) => { s.hidden = s.id !== `t-${k}`; });
@@ -1100,7 +1169,8 @@
     $("p-stake").addEventListener("input", parOut);
     legRows(); parOut();
 
-    /* player lookup (players.js is loaded only here) */
+    /* player lookup (players.js is loaded only here, once per visit) */
+    if (window.PLAYERS) { lookup(window.PLAYERS); return; }
     const sc = document.createElement("script");
     sc.src = "players.js?v=" + (((document.querySelector('script[src^="data.js"]') || {}).src || "").split("v=")[1] || "");
     sc.onload = () => lookup(window.PLAYERS);
@@ -1197,8 +1267,22 @@
      What a new visitor sees first: what it is, the live record, what members get (shown with the site's real
      components, filled with the last fully graded week - public picks only), how to check us, pricing, FAQ.
      Old links to the picks (#ph-..., ?week=) and the home-screen app go straight to This week instead. */
+  // the FAQ (landing page and About): the trial wording follows the offer
+  function faqHtml() {
+    const trial = (D.offer || {}).trial || "";
+    return [["What exactly do I get?", `Every receptions pick the model makes, the moment it's made: in the members' Discord channel (with a phone notification) and on the site, with the size in dollars for your bankroll and a button to its sportsbook. Plus the bet tracker.${trial ? ` It starts with a ${esc(trial)}.` : ""}`],
+           ["What's the free account?", "A free login that shows the free pick of each game day, this week's sealed picks (revealed at kickoff), and the tools. No card needed."],
+           ["What's a unit?", `A fixed slice of your bankroll, so every bet is sized the same way. Enter your bankroll once and the site turns units into dollars for you. The free <a href="tools.html">bet sizing tool</a> shows how.`],
+           ["Which sportsbooks?", "DraftKings and FanDuel. Each pick is priced at whichever of the two has the better price when it's made."],
+           ["Is this a guarantee?", "No. These are a model's opinions, not certainties, and even good picks lose often. Every result is kept public so you can judge the record yourself. Bet only what you can afford to lose."],
+           ["Can I check the record before I pay?", `Yes, it's public with no login: <a href="receptions.html">every receptions pick</a> since launch, graded, with the time it was posted.`],
+           ["How do I cancel?", "Anytime, in one click from your account. Access ends at the end of the period you paid for."],
+           ["Who can join?", "Adults 21 and over, where sports betting is legal. If gambling stops being fun, call or text 1-800-GAMBLER (free, 24/7)."]]
+      .map(([q, a]) => `<details class="drawer"><summary>${q}</summary><p>${a}</p></details>`).join("");
+  }
+
   function landing() {
-    if (/^#ph-/.test(location.hash) || /[?&](week|season)=/.test(location.search) || standalone()) {
+    if (/^#ph-/.test(location.hash) || /[?&](week|season)=/.test(location.search) || SIGNED_IN) {
       location.replace(href(F.home) + location.search + location.hash); return;
     }
     const R = (MKT("receptions") || {}).record || [], r = R[0] || {};
@@ -1264,6 +1348,10 @@
         "Every pick since launch, graded at the close, with the time it was posted. Wins and losses stay up for good, so you can judge it before you pay a cent.",
         MKT("receptions") ? win("lineledgerpicks.com/receptions", `<div class="lp-chart" data-fx="draw">${unitsChart(MKT("receptions"))}</div>`) : ""]];
     $("app").innerHTML = `
+      <section class="lp-live lp-rv" id="tour"><div class="lp-live-t"><div class="eyebrow">The real thing</div><h2>Take a look inside</h2>
+          <p>This is the live site, right now: this ${esc(PERIOD.toLowerCase())}'s free pick, the sealed picks members already see, and every graded result. Members get it all unsealed.</p></div>
+        <div class="lp-live-win"><div class="win-bar"><i></i><i></i><i></i><span>lineledgerpicks.com/week</span><b class="lp-live-tag">Live</b></div>
+          <div class="lp-live-view" data-src="${href(F.home)}?tour=1"><div class="lp-cursor" aria-hidden="true"></div></div></div></section>
       <section class="lp-how lp-rv"><div class="eyebrow">How it works</div><h2>From the model to your bet slip</h2>
         <ol class="lp-steps">
           <li><b>The model prices every line</b><span>It projects each receiver's catches from his recent role and the matchup, then compares that to the lines at DraftKings and FanDuel.</span></li>
@@ -1288,19 +1376,95 @@
             <li>Every pick, the moment it's made</li><li>Phone alerts in the members' Discord</li><li>Sized in dollars for your bankroll</li><li>One-tap DraftKings / FanDuel buttons</li><li>Your bet tracker</li><li>Cancel anytime</li></ul>
             ${cta("gold")}${login && !SIGNED_IN ? `<a class="lp-login" href="${esc(login)}?next=%2Fweek">Already a member? Log in</a>` : ""}</article></div></section>
       <section class="lp-faq lp-rv"><div class="eyebrow">FAQ</div><h2>Questions</h2>
-        ${[["What exactly do I get?", `Every receptions pick the model makes, the moment it's made: in the members' Discord channel (with a phone notification) and on the site, with the size in dollars for your bankroll and a button to its sportsbook. Plus the bet tracker.${trial ? ` It starts with a ${esc(trial)}.` : ""}`],
-           ["What's the free account?", "A free login that shows the free pick of each game day, this week's sealed picks (revealed at kickoff), and the tools. No card needed."],
-           ["What's a unit?", `A fixed slice of your bankroll, so every bet is sized the same way. Enter your bankroll once and the site turns units into dollars for you. The free <a href="tools.html">bet sizing tool</a> shows how.`],
-           ["Which sportsbooks?", "DraftKings and FanDuel. Each pick is priced at whichever of the two has the better price when it's made."],
-           ["Is this a guarantee?", "No. These are a model's opinions, not certainties, and even good picks lose often. Every result is kept public so you can judge the record yourself. Bet only what you can afford to lose."],
-           ["Can I check the record before I pay?", `Yes, it's public with no login: <a href="receptions.html">every receptions pick</a> since launch, graded, with the time it was posted.`],
-           ["How do I cancel?", "Anytime, in one click from your account. Access ends at the end of the period you paid for."],
-           ["Who can join?", "Adults 21 and over, where sports betting is legal. If gambling stops being fun, call or text 1-800-GAMBLER (free, 24/7)."]]
-          .map(([q, a]) => `<details class="drawer"><summary>${q}</summary><p>${a}</p></details>`).join("")}</section>
+        ${faqHtml()}</section>
       <section class="lp-end lp-rv"><h2>Get the next pick the moment it's made.</h2><div class="lp-ctas">${cta("gold")}</div>
         <p class="lp-fine">21+ only. For information and entertainment; no pick is a guarantee and past results don't predict future ones. Gambling problem? Call or text 1-800-GAMBLER.</p></section>`;
-    document.querySelectorAll(".win .cstub, .win .ticket").forEach((e) => e.classList.add("in"));   // a picture: no per-ticket fade
+    document.querySelectorAll(".win .cstub, .win .ticket").forEach((e) => e.classList.add("in"));
+    liveTour();   // a picture: no per-ticket fade
     revealOnScroll();
+  }
+  // the live preview: the real This week page (tour mode: no sign-in wall, nothing clickable), drawn at desktop
+  // width and scaled to fit, loaded only when it scrolls into view, and drifting slowly down the page and back
+  function liveTour() {
+    const box = document.querySelector(".lp-live-view");
+    if (!box || typeof IntersectionObserver === "undefined") return;
+    const W = 1440, H = 900;
+    const fit = () => { const k = box.clientWidth / W; box.style.height = `${Math.round(H * k)}px`; const f = box.querySelector("iframe"); if (f) f.style.transform = `scale(${k})`; };
+    let made = false;
+    const make = () => {
+      if (made) return;
+      made = true; io.disconnect();
+      const f = document.createElement("iframe");
+      Object.assign(f, { src: box.dataset.src, title: "Line Ledger, live", loading: "lazy", tabIndex: -1 });
+      f.setAttribute("aria-hidden", "true");
+      Object.assign(f.style, { width: `${W}px`, height: `${H}px` });
+      const stage = document.createElement("div"); stage.className = "lp-stage"; stage.appendChild(f);   // (no zoom)
+      box.insertBefore(stage, box.firstChild); fit();
+      f.addEventListener("load", () => demo(f), { once: true });
+    };
+    // load it when it comes near the screen (and, as a backup, check on scroll: some browsers skip the observer)
+    const io = new IntersectionObserver((xs) => { if (xs.some((x) => x.isIntersecting)) make(); }, { rootMargin: "200px" });
+    io.observe(box);
+    const near = () => { const r = box.getBoundingClientRect(); if (r.top < innerHeight + 200 && r.bottom > -200) make(); };
+    addEventListener("scroll", near, { passive: true }); setTimeout(near, 400);
+    addEventListener("resize", fit); fit();
+  }
+  // the live window's guided demo: the real site, clicked around by a visible cursor, on a loop (paused while the
+  // window is off screen).  Each step finds its control on the live page, so it follows whatever the site looks like.
+  function demo(f) {
+    // someone using the real site: smooth scrolling, the three views (the full ticket opened in Tickets), the Open /
+    // Live / Final tabs, search, the record and the player lookup.  A soft gold outline marks what's being shown.
+    // Loops; pauses while the window is off screen.
+    const box = f.closest(".lp-live-view"), cur = box.querySelector(".lp-cursor");
+    const ring = document.createElement("div"); ring.className = "lp-ring"; box.appendChild(ring);
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let on = true;
+    new IntersectionObserver((xs) => { on = xs.some((x) => x.isIntersecting); }).observe(box);
+    const k = () => box.clientWidth / 1440;
+    const W = () => f.contentWindow, Dd = () => f.contentDocument, $$ = (sel) => Dd() && Dd().querySelector(sel);
+    const point = (el) => { const r = el.getBoundingClientRect(); cur.style.left = `${(r.left + Math.min(r.width / 2, 70)) * k()}px`; cur.style.top = `${(r.top + r.height / 2) * k()}px`; };
+    const mark = (el) => { const r = el.getBoundingClientRect(), kk = k(), pad = 6;
+      Object.assign(ring.style, { left: `${(r.left - pad) * kk}px`, top: `${(r.top - pad) * kk}px`, width: `${(r.width + 2 * pad) * kk}px`, height: `${Math.min(r.height + 2 * pad, 880) * kk}px` });
+      ring.classList.add("on"); };
+    const unmark = () => ring.classList.remove("on");
+    const glide = (to, ms = 1400) => new Promise((done) => {                 // eased scroll inside the live page
+      const w = W(), from = w.scrollY, max = Dd().documentElement.scrollHeight - 900, end = Math.max(0, Math.min(max, to)), t0 = performance.now();
+      const step = (t) => { const q = Math.min(1, (t - t0) / ms), e = q < .5 ? 2 * q * q : 1 - Math.pow(-2 * q + 2, 2) / 2;
+        w.scrollTo(0, from + (end - from) * e); if (q < 1) setTimeout(() => step(performance.now()), 16); else done(); };
+      step(performance.now()); });
+    const into = async (el, top = 300) => { const r = el.getBoundingClientRect(); if (r.top < 140 || r.bottom > 820) await glide(W().scrollY + r.top - top, 900); };
+    const tap = () => { cur.classList.add("tap"); setTimeout(() => cur.classList.remove("tap"), 350); };
+    const click = async (sel, wait = 900, el0) => { const el = el0 || $$(sel); if (!el) return null; await into(el); point(el); await sleep(700); tap(); el.click(); await sleep(wait); return el; };
+    const type = async (sel, text) => { const el = $$(sel); if (!el) return; await into(el); point(el); await sleep(650); el.focus(); el.value = "";
+      for (const ch of text) { el.value += ch; el.dispatchEvent(new (W().Event)("input", { bubbles: true })); await sleep(115); } };
+    const clear = (sel) => { const el = $$(sel); if (el) { el.value = ""; el.dispatchEvent(new (W().Event)("input", { bubbles: true })); } };
+    const view = async (v) => { await click("#fbtn", 350); await click(`[data-view="${v}"]`, 450); await click("#fbtn", 450); };
+    const show = async (el, hold = 2600, top = 150) => { if (!el) return; const r = el.getBoundingClientRect(); await glide(W().scrollY + r.top - top, 900); await sleep(250); mark(el); await sleep(hold); unmark(); await sleep(400); };
+    const wait = async () => { while (!on) await sleep(400); };
+    const shortName = () => { const n = $$(".ticket .t-player, .cstub .cs-player, .ltable .l-player"); return n ? n.textContent.trim().split(/\s+/).pop().slice(0, 5) : "Smith"; };
+    (async () => {
+      await sleep(800); cur.classList.add("on");
+      for (;;) {
+        await wait(); await glide(0, 500);
+        await view("tickets");                                                                   // 1. Tickets view
+        await glide(520, 1300); await sleep(250);
+        { const tk = $$(".ticket"), sm = tk && tk.querySelector("details.drawer > summary");    //    ...the full ticket
+          if (sm) { await click(null, 400, sm); await show(tk, 2600); await click(null, 400, sm); } }
+        await glide(0, 1000);
+        await wait(); await view("compact");                                                     // 2. Compact view
+        { const row = $$(".cstub .cs-row"); if (row) { await click(null, 500, row); await show(row.closest(".cstub"), 1900); await click(null, 400, row); } }
+        await wait(); await view("list");                                                        // 3. List view
+        await glide(420, 1100); await sleep(250); await glide(0, 800);
+        await wait(); for (const ph of ["final", "live", "open"]) await click(`[data-ph="${ph}"]`, 1300);   // the tabs
+        await wait(); await click('.side a[href^="results"]', 1200);                                         // the record
+        await glide(650, 2000); await sleep(600); await glide(1350, 1900); await sleep(600);
+        await wait(); await click('.side a[href*="#player"]', 1400);                                         // player lookup
+        await type("#l-q", shortName()); await sleep(700);
+        { const li = $$("#l-list li"); if (li) { point(li); await sleep(600); tap(); li.dispatchEvent(new (W().MouseEvent)("mousedown", { bubbles: true })); await sleep(1300); }
+          await show($$("#l-out"), 2800, 120); }
+        await wait(); await click('.side a[href^="week"]', 1300);                                            // and back
+      }
+    })();
   }
   // sections slide up and fade in as they come into view; the hero's product shot drifts a little slower than the
   // page.  Off for anyone whose device asks for reduced motion (and where the browser can't tell when things show)
@@ -1381,6 +1545,67 @@
         <p class="muted">The full record stays open to everyone: <a href="receptions.html">every receptions pick</a>, <a href="${F.results}">results by ${PERIOD.toLowerCase()}</a>.</p>
       </div></section>`;
   }
-  if (D.gate && D.login_url && !SIGNED_IN && ["home", "tools", "parlays"].includes(page)) gatePage();
+  if (TOUR) document.documentElement.classList.add("tour");                  // the landing page's live preview (an iframe)
+  if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
   else (PAGES[page] || home)();
+};
+
+/* ------------------------------------------------------------------ instant page switching
+   The site loads once; following a link to another page of the site redraws it in place (no reload of the page
+   or of the picks data), and the back button works as usual.  Each redraw starts from the original page shell;
+   listeners and timers the previous page added to the document/window are dropped first. */
+(function () {
+  const RAW = window.DATA;
+  const ROUTES = (RAW && RAW.routes) || {};
+  const ET = typeof EventTarget !== "undefined" && EventTarget.prototype.addEventListener;
+  const routerOk = !!(ET && typeof document !== "undefined" && document instanceof EventTarget && window.history && window.history.pushState
+    && typeof structuredClone === "function" && Object.keys(ROUTES).length);
+  if (!routerOk) { window.LL_BOOT(); return; }
+  const SHELL = document.body.innerHTML;
+  let ac = null, timers = [];
+  const withSig = (o) => (o === undefined ? { signal: ac.signal } : typeof o === "boolean" ? { capture: o, signal: ac.signal } : { ...o, signal: ac.signal });
+  document.addEventListener = function (t, f, o) { return ET.call(document, t, f, withSig(o)); };
+  window.addEventListener = function (t, f, o) { return ET.call(window, t, f, withSig(o)); };
+  const SI = window.setInterval.bind(window);
+  window.setInterval = function (f, ms, ...a) { const id = SI(f, ms, ...a); timers.push(id); return id; };
+  const boot = () => { ac = new AbortController(); window.DATA = structuredClone(RAW); window.LL_BOOT(); };
+  const route = (path) => { let p = path.replace(/^\/+/, ""); if (p === "" || p.endsWith("/")) p += "index.html"; if (!/\.html$/.test(p)) p += ".html"; return ROUTES[p] ? [p, ROUTES[p]] : null; };
+  function go(href, push) {
+    const u = new URL(href, location.href), r = route(u.pathname);
+    if (!r) return false;
+    const [, [page, market, sport, title]] = r;
+    const g = document.querySelector(".bbar .bb-glass"), was = g ? [g.style.getPropertyValue("--x"), g.style.getPropertyValue("--w")] : null;
+    ac.abort(); timers.forEach(clearInterval); timers = [];
+    if (push) history.pushState({}, "", u.href);
+    document.body.innerHTML = SHELL;
+    document.body.className = ""; delete document.body.dataset.side;
+    Object.assign(document.body.dataset, { page, market, sport });
+    document.title = title;
+    boot();
+    if (location.hash && document.getElementById(location.hash.slice(1))) document.getElementById(location.hash.slice(1)).scrollIntoView();
+    else window.scrollTo(0, 0);
+    // the phone bar's bubble slides from the old tab to the new one
+    const g2 = document.querySelector(".bbar .bb-glass"), bar = document.querySelector(".bbar");
+    if (g2 && was && was[0]) {
+      const to = [g2.style.getPropertyValue("--x"), g2.style.getPropertyValue("--w")];
+      bar.classList.remove("ready"); g2.style.setProperty("--x", was[0]); g2.style.setProperty("--w", was[1]);
+      void g2.offsetWidth; bar.classList.add("ready");
+      requestAnimationFrame(() => { g2.style.setProperty("--x", to[0]); g2.style.setProperty("--w", to[1]); });
+    }
+    if (window.goatcounter && window.goatcounter.count) try { window.goatcounter.count({ path: u.pathname + u.search }); } catch (e) {}
+    return true;
+  }
+  // after the page's own click handlers (window hears a click after the document), so they can still cancel it
+  ET.call(window, "click", (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest && e.target.closest("a[href]");
+    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download") || a.getAttribute("href").startsWith("#")) return;
+    const u = new URL(a.href, location.href);
+    if (u.origin !== location.origin || /^\/(auth|api)\//.test(u.pathname)) return;
+    const same = u.pathname === location.pathname && u.search === location.search;
+    if (same && document.body.dataset.page !== "tools") return;              // an anchor on this page: the browser scrolls
+    if (go(u.href, true)) e.preventDefault();
+  });
+  ET.call(window, "popstate", () => { if (!go(location.href, false)) location.reload(); });
+  boot();
 })();
