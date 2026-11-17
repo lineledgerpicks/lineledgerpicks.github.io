@@ -503,6 +503,7 @@ window.LL_BOOT = function () {
   }
 
   /* ------------------------------------------------------------------ records, scoreboards, charts */
+  const beatTone = (v) => v == null || v === 50 ? "" : v > 50 ? "up" : "down";     // beat the close: vs a coin flip
   function tote(rec, P, compact) {
     const r = rec[0] || { n: 0 };
     const n = r.n_clv || 0;
@@ -510,7 +511,7 @@ window.LL_BOOT = function () {
     const cells = [["", `<b>${wl(r)}</b>`, P.paper ? "paper record" : "record", ""],
       ["", `<b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 2, true) + "u" : "&ndash;"}</b>`,
         `units${r.sized_roi != null ? ` &middot; ${pct(r.sized_roi)} ROI` : ""}`, "Profit in units, each pick at the size on its ticket and the stamped price"],
-      ["", `<b>${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</b>`, "beat the close", "How often the pick's price was better than the final price before kickoff"],
+      ["", `<b class="${beatTone(r.beat)}">${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</b>`, "beat the close", "How often the pick's price was better than the final price before kickoff"],
       ["", `<b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b>`, `value vs close${n && n < EARLY ? ` <em class="n">early</em>` : ""}`,
         `How much better or worse the pick's price was than the closing market, on average (${n} picks). Positive means the price beat the market.`]];
     return `<div class="tote${compact ? " compact" : ""}">${cells.map(([c, b, s, t]) => `<div class="${c}"${t ? ` title="${esc(t)}"` : ""}>${b}<span>${s}</span></div>`).join("")}</div>`;
@@ -529,7 +530,7 @@ window.LL_BOOT = function () {
     return `<div class="tablebox"><table><thead><tr><th>Picks</th><th class="num opt">Graded</th><th class="num">W-L-P</th><th class="num opt">Win %</th><th class="num" title="Each pick at the size on its ticket">Units</th><th class="num opt">ROI</th><th class="num opt" title="Every pick 1 unit">1u each</th><th class="num key">Value vs close</th><th class="num opt">Beat close</th></tr></thead>
       <tbody>${rows.map((x, i) => `<tr class="${x.sub ? "sub" : i === 0 ? "top" : ""}"><td>${esc(x.label)}</td><td class="num opt">${x.n}${x.pending ? ` <span class="note">+${x.pending}</span>` : ""}</td>
         <td class="num">${wl(x)}</td><td class="num opt">${x.n ? pct(x.win, false) : "&ndash;"}</td><td class="num ${tone(x.sized)}">${x.sized != null ? num(x.sized, 2, true) : "&ndash;"}</td>
-        <td class="num opt ${tone(x.sized_roi)}">${pct(x.sized_roi)}</td><td class="num opt ${tone(x.units)}">${x.n ? num(x.units, 2, true) : "&ndash;"}</td><td class="num key ${tone(x.clv_ev)}">${pct(x.clv_ev)}${earlyNote(x.n_clv)}</td><td class="num opt">${x.beat == null ? "&ndash;" : x.beat.toFixed(0) + "%"}</td></tr>`).join("")}</tbody></table></div>`;
+        <td class="num opt ${tone(x.sized_roi)}">${pct(x.sized_roi)}</td><td class="num opt ${tone(x.units)}">${x.n ? num(x.units, 2, true) : "&ndash;"}</td><td class="num key ${tone(x.clv_ev)}">${pct(x.clv_ev)}${earlyNote(x.n_clv)}</td><td class="${beatTone(x.beat)} num opt">${x.beat == null ? "&ndash;" : x.beat.toFixed(0) + "%"}</td></tr>`).join("")}</tbody></table></div>`;
   }
   function lineChart(vals, caption, last, fmt) {
     if (vals.length < 3) return "";
@@ -774,18 +775,26 @@ window.LL_BOOT = function () {
     const nOf = (ph) => wk.filter((p) => p.phase === ph).length;
     const chips = MK.map((k) => { const P = MKT(k), r = (P.record || [])[0] || {};
       return `<a class="rchip" href="${P.slug}.html"><em>${esc(P.short || P.label)}</em><b>${wl(r)}</b><b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 1, true) + "u" : ""}</b></a>`; }).join("");
+    if (state.week == null || state.week === "all") state.week = D.week;
+    const past = state.season !== D.season || state.week !== D.week;          // opened from Results: an earlier week
+    if (past) {
+      const pw = allPicks.filter((p) => p.season === state.season && p.week === state.week);
+      const done = pw.length && pw.every((p) => p.phase === "final");
+      hero(`<a class="back" href="${href(F.home)}">&larr; Back to this ${PERIOD.toLowerCase()}</a>`, `${PERIOD} <em>${state.week}</em> &middot; ${state.season}`,
+        `${done ? "Final" : "In progress"} &middot; ${pw.length} pick${pw.length === 1 ? "" : "s"} &middot; <a href="${F.results}">every ${PERIOD.toLowerCase()}</a>`,
+        `<div class="rchips">${MK.map((k) => { const r = periodRec(MKT(k), state.season, state.week); return r && r.n ? `<span class="rchip"><em>${esc(MKT(k).short || MKT(k).label)}</em><b>${wl(r)}</b><b class="${tone(r.sized)}">${num(r.sized || 0, 1, true)}u</b></span>` : ""; }).join("")}</div>`);
+    } else
     hero(`${esc(SPORT.name)} player props &middot; ${D.season}`, `${PERIOD} <em>${D.week}</em>`,
       `${nOf("open") + sl.length} open${sl.length ? ` (${sl.length} sealed)` : ""} &middot; ${nOf("live")} live &middot; ${nOf("final")} graded`,
       `<div class="rchips">${chips}<a class="rchip more" href="${F.results}">Full record &rarr;</a></div>`, featured());
-    if (state.week == null || state.week === "all") state.week = D.week;
     // one story: the record (hero), last week's recap, then this week's picks (the moving strip was a third copy of
     // the open picks; marquee() stays for any page that wants it)
     $("app").innerHTML = `
-      ${homeRecap()}
+      ${past ? "" : homeRecap()}
       <section><h2 id="wk-title" class="sr"></h2>
         <div id="tb"></div><div id="phases" class="phases"></div></section>`;
     redraw = (full) => {
-      if (full !== false || !$("pk-period")) $("tb").innerHTML = toolbar(pickers(allPicks, false));
+      if (full !== false || !$("tb").firstChild) $("tb").innerHTML = toolbar("");     // no week picker: past weeks open from Results
       $("wk-title").textContent = `${PERIOD} ${state.week ?? "-"}, ${state.season}`;
       const list = allPicks.filter((p) => p.season === state.season && p.week === state.week && matches(p));
       $("phases").innerHTML = phaseSections(list, state.season, state.week);
@@ -847,7 +856,7 @@ window.LL_BOOT = function () {
     if (!MK.length) { $("app").innerHTML = `<div class="empty">No ${esc(SPORT.name)} picks have closed yet. Closing line value shows up here once they do.</div>`; return; }
     const cards = MK.map((k) => { const P = MKT(k), r = P.record[0] || {};
       const cells = [["Value vs close", pct(r.clv_ev), tone(r.clv_ev), `what each pick was worth against the closing price, vig removed (n=${r.n_clv || 0}${(r.n_clv || 0) < 50 ? ", too early to judge" : ""})`],
-        ["Beat the close", r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%", "", "better line, or same line at a better price"],
+        ["Beat the close", r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%", beatTone(r.beat), "better line, or same line at a better price"],
         ["Avg line move", r.clv == null ? "&ndash;" : `${sgn(r.clv)}${r.clv.toFixed(1)} ${P.unit}`, tone(r.clv), "from the pick to the close"],
         ["Moved our way", r.toward == null ? "&ndash;" : r.toward.toFixed(0) + "%", "", `of the ${r.n_moved || 0} lines that moved`]];
       return `<article class="clvcard"><div class="sb-h2"><span>${esc(P.label)}</span>${P.paper ? `<span class="chip paper">paper</span>` : `<span class="chip pre">the record</span>`}</div>
@@ -858,7 +867,7 @@ window.LL_BOOT = function () {
     const short = (k) => esc(MKT(k).short || MKT(k).label);
     const byWeek = MK.flatMap((k) => Object.entries(MKT(k).weeks).map(([key, r]) => ({ k, key, r }))).sort((a, b) => b.key.localeCompare(a.key, undefined, { numeric: true }) || MK.indexOf(a.k) - MK.indexOf(b.k));
     const bySharp = MK.flatMap((k) => MKT(k).record.filter((r) => /^Sharp|^No sharp/.test(r.label)).map((r) => ({ k, r })));
-    const row = (label, r, P) => `<tr><td>${label}</td><td class="num opt">${r.n_clv || 0}</td><td class="num key ${tone(r.clv_ev)}">${pct(r.clv_ev)}</td><td class="num">${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</td><td class="num opt ${tone(r.clv)}">${r.clv == null ? "&ndash;" : sgn(r.clv) + r.clv.toFixed(1) + " " + P.unit}</td></tr>`;
+    const row = (label, r, P) => `<tr><td>${label}</td><td class="num opt">${r.n_clv || 0}</td><td class="num key ${tone(r.clv_ev)}">${pct(r.clv_ev)}</td><td class="num ${beatTone(r.beat)}">${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</td><td class="num opt ${tone(r.clv)}">${r.clv == null ? "&ndash;" : sgn(r.clv) + r.clv.toFixed(1) + " " + P.unit}</td></tr>`;
     const table = (rows) => `<div class="tablebox"><table><thead><tr><th>Picks</th><th class="num opt">Closes</th><th class="num key">Value vs close</th><th class="num">Beat close</th><th class="num opt">Avg move</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     const graded = allPicks.filter((p) => p.clv_ev != null).sort((a, b) => b.clv_ev - a.clv_ev);
     const mini = (p) => `<a class="mini" href="${pageOf(p)}?season=${p.season}&week=${p.week}#${p.serial}"><span><b>${esc(nm(p))}</b> ${p.side} ${p.line} <span class="muted">${odds(p.price)} &middot; ${short(p.prop)} &middot; ${PERIOD.toLowerCase()} ${p.week}</span></span><span class="mono ${tone(p.clv_ev)}">${pct(p.clv_ev)}</span></a>`;
@@ -1026,7 +1035,7 @@ window.LL_BOOT = function () {
 
   // Tools > Alerts: how to follow, shaped by who's looking (member / free account / visitor)
   function alertsPanel() {
-    const linked = ck("ll_d") === "1", feed = `${D.site_url || ""}feed.xml`;
+    const linked = ck("ll_d") === "1";
     const card = (cls, head, body, cta = "") => `<article class="al-card ${cls}"><h3>${head}</h3><div>${body}</div>${cta}</article>`;
     const btn = (href, text, cls = "gold") => `<a class="lp-btn ${cls}" href="${esc(href)}"${/^https?:/.test(href) ? ' target="_blank" rel="noopener"' : ""}>${text}</a>`;
     const steps = `<ol class="al-steps"><li>Open Discord and long-press (or right-click) <b>#alerts</b>.</li><li>Tap <b>Notification Settings</b>, then <b>All Messages</b>.</li><li>Make sure Discord's notifications are on in your phone's settings.</li></ol>`;
@@ -1040,8 +1049,7 @@ window.LL_BOOT = function () {
     const free = D.discord ? card("", `${brand("discord", 20)} A free pick every game day`, `<p>Everyone can join the Line Ledger Discord: the day's free pick posts in <b>#free-pick</b>.</p>`, btn(D.discord, "Join the Discord", "ghost dark")) : "";
     const x = D.x ? card("", `${brand("x", 18)} Results and the free pick`, `<p>Follow <b>@${esc(D.x)}</b> for the free pick and every week's results.</p>`, btn(`https://x.com/${D.x}`, `Follow @${esc(D.x)}`, "ghost dark")) : "";
     const home = standalone() ? "" : card("", "Add Line Ledger to your home screen", `<p><b>iPhone:</b> in Safari, tap Share, then <b>Add to Home Screen</b>. <b>Android:</b> tap the menu, then <b>Install app</b>. It opens full screen, straight to the picks.</p>`);
-    const rss = card("", "RSS feed", `<p>Add <span class="mono">${esc(feed)}</span> to any feed reader app and switch on its alerts.</p>`);
-    return `<div class="al-grid">${alerts}${free}${x}${home}${rss}</div>`;
+    return `<div class="al-grid">${alerts}${free}${x}${home}</div>`;
   }
 
   function toolsPage() {
@@ -1457,7 +1465,9 @@ window.LL_BOOT = function () {
         await glide(420, 1100); await sleep(250); await glide(0, 800);
         await wait(); for (const ph of ["final", "live", "open"]) await click(`[data-ph="${ph}"]`, 1300);   // the tabs
         await wait(); await click('.side a[href^="results"]', 1200);                                         // the record
-        await glide(650, 2000); await sleep(600); await glide(1350, 1900); await sleep(600);
+        await glide(650, 1800); await sleep(500);
+        await wait(); await click('.side a[href^="receptions"]', 1200);                                      // the receptions record
+        await glide(380, 1500); await sleep(900); { const ch = $$(".charts .chart, .chart"); if (ch) await show(ch, 2400, 160); }
         await wait(); await click('.side a[href*="#player"]', 1400);                                         // player lookup
         await type("#l-q", shortName()); await sleep(700);
         { const li = $$("#l-list li"); if (li) { point(li); await sleep(600); tap(); li.dispatchEvent(new (W().MouseEvent)("mousedown", { bubbles: true })); await sleep(1300); }

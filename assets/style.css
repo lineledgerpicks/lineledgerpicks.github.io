@@ -1516,3 +1516,8 @@ body[data-page="home"] .hero h1 { font-size: clamp(38px, 5vw, 60px); }
 #phtabs-slot:empty { display: none; }
 /* desktop: the sidebar lists every tool, so the Tools page's own tab row goes (phones keep it) */
 @media (min-width: 1024px) { body[data-side] .tswitch { display: none; } }
+
+/* a past week (opened from Results): the way back */
+.hero .back { color: var(--board-text); text-decoration: none; font-weight: 700; }
+.hero .back:hover { text-decoration: underline; }
+td.up { color: var(--up); } td.down { color: var(--down); }
