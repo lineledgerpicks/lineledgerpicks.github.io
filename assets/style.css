@@ -1521,3 +1521,23 @@ body[data-page="home"] .hero h1 { font-size: clamp(38px, 5vw, 60px); }
 .hero .back { color: var(--board-text); text-decoration: none; font-weight: 700; }
 .hero .back:hover { text-decoration: underline; }
 td.up { color: var(--up); } td.down { color: var(--down); }
+
+/* the notice above the page: just joined / confirming / no membership on this Whop account */
+.ll-note-wrap { padding-top: 16px; }
+.ll-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; padding: 14px 18px;
+  border: 1px solid var(--rule); border-radius: 14px; background: var(--ticket); font-size: 15px; line-height: 1.45; }
+.ll-note b { font-weight: 800; }
+.ll-note.ok { border-color: rgba(82, 194, 141, .55); box-shadow: 0 0 0 3px rgba(82, 194, 141, .12); }
+.ll-note.warn { border-color: rgba(238, 176, 79, .6); box-shadow: 0 0 0 3px rgba(238, 176, 79, .12); }
+.ll-note.wait b::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px;
+  border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: ll-spin .8s linear infinite; }
+@keyframes ll-spin { to { transform: rotate(360deg); } }
+.ll-note-sub { display: block; margin-top: 4px; color: var(--muted); font-size: 13.5px; }
+.ll-note-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.ll-note .lp-btn { white-space: nowrap; }
+.acct-who { display: block; padding: 8px 12px 6px; color: var(--muted); font-size: 12.5px; border-bottom: 1px solid var(--rule); }
+.acct-who b { color: var(--ink); }
+.ll-note-wrap { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.ll-note { box-sizing: border-box; max-width: 100%; }
+.ll-note > div:first-child { flex: 1 1 260px; min-width: 0; }
+@media (max-width: 560px) { .ll-note { padding: 12px 14px; font-size: 14px; } .ll-note-acts { width: 100%; } .ll-note-acts .lp-btn { flex: 1; justify-content: center; text-align: center; } }

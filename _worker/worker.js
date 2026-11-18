@@ -1,11 +1,17 @@
 /* Line Ledger site worker (Cloudflare).  Serves the static site, plus:
      /auth/login, /auth/callback, /auth/logout  - "Sign in with Whop" (OAuth 2.1 + PKCE)
+     /auth/join                                 - "Start free trial": sign in with Whop first, then Whop's checkout
+                                                  (JOIN_URL), so the purchase lands on the account the site knows
+     /auth/welcome                              - where Whop sends buyers after checkout (Whop: Settings > Checkout >
+                                                  Redirect link): re-checks access now, then the picks + Connect Discord
      /api/me                                    - who is signed in, and are they a member
      /api/members.js                            - the full picks (members only; replaces the sealed public data)
    Membership = access to the Whop product WHOP_PRODUCT_ID, checked at sign-in with the member's own token and
    re-checked every 15 minutes with the app's API key.  The members' picks are published encrypted (members.enc,
    AES-GCM); only this worker holds the key.  Secrets (Cloudflare dashboard): SESSION_KEY, MEMBERS_KEY,
-   WHOP_API_KEY, optional WHOP_CLIENT_SECRET.  Vars (wrangler.jsonc): WHOP_CLIENT_ID, WHOP_PRODUCT_ID, SITE. */
+   WHOP_API_KEY, optional WHOP_CLIENT_SECRET.  Vars (wrangler.jsonc): WHOP_CLIENT_ID, WHOP_PRODUCT_ID, SITE, JOIN_URL.
+   Whop says "admin" for the business's own team (the owner): they see the full picks, but the Discord Member role
+   is for customers only (a paying or trial membership). */
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -86,9 +92,10 @@ async function whopJSON(url, token, init = {}) {
 // the app's API key: just the apik_... token, even if a "WHOP_API_KEY=..." line (or two) was pasted around it
 const apiKey = (env) => { const v = String(env.WHOP_API_KEY || ""); const m = v.match(/apik_[A-Za-z0-9_.-]+/); return m ? m[0] : v.trim(); };
 const why = (e) => String((e && e.message) || e).replace(/[^a-z0-9_-]/gi, "").slice(0, 60);
+// Whop's answer: "customer" (a paying or trial membership), "admin" (the business's own team), or null (no access)
 async function hasAccess(env, userId, token) {
   const r = await whopJSON(`${apiBase(env)}/users/${encodeURIComponent(userId)}/access/${encodeURIComponent(env.WHOP_PRODUCT_ID)}`, token);
-  return !!r.has_access && r.access_level !== "no_access";
+  return r.has_access && r.access_level !== "no_access" ? (r.access_level === "admin" ? "admin" : "customer") : null;
 }
 async function checkWithFallback(env, userId, userToken) {       // the member's token first, then the app's key
   try { if (userToken) return await hasAccess(env, userId, userToken); } catch (e) { if (!env.WHOP_API_KEY) throw e; }
@@ -143,18 +150,48 @@ async function callback(req, env) {
     tokens = await exchange(env, url.searchParams.get("code"), st.v);
     me = await whopJSON(`${oauthBase(env)}/userinfo`, tokens.access_token);
   } catch (e) { return fail(why(e)); }
-  let member = false, note = "";
-  try { member = await checkWithFallback(env, me.sub, tokens.access_token); }
+  let lv = null, note = "";
+  try { lv = await checkWithFallback(env, me.sub, tokens.access_token); }
   catch (e) { note = why(e); console.error("access check failed:", note); }   // signed in anyway, as a free account
-  const s = await seal(env, { u: me.sub, name: me.preferred_username || me.name || "", m: member, c: note ? 0 : now(), exp: now() + SESSION_S,
-    ...(tokens.refresh_token ? { rt: await hide(env, tokens.refresh_token) } : {}) });
-  const to = note ? `/?signin=nocheck&why=${note}` : member ? st.n : "/#pricing";
-  return redirect(to, [cookie(env, "ll_oauth", "", 0), cookie(env, "ll_s", s, SESSION_S),
-    cookie(env, "ll_in", "1", SESSION_S, false), cookie(env, "ll_m", member ? "1" : "0", SESSION_S, false)]);
+  const name = me.preferred_username || me.name || me.email || "";
+  const s = { u: me.sub, name, m: !!lv, lv, c: note ? 0 : now(), exp: now() + SESSION_S,
+    ...(tokens.refresh_token ? { rt: await hide(env, tokens.refresh_token) } : {}) };
+  const to = note ? `/week?signin=nocheck&why=${note}` : st.n;
+  return redirect(to, [cookie(env, "ll_oauth", "", 0), ...(await sessionCookies(env, s))]);
 }
 
-function logout(env) {
-  return redirect("/", ["ll_s", "ll_in", "ll_m", "ll_d", "ll_oauth"].map((n) => cookie(env, n, "", 0, n === "ll_s" || n === "ll_oauth")));
+// the session cookie plus the small ones the page reads: signed in, member, owner, Discord linked, name
+async function sessionCookies(env, s) {
+  const link = env.LINKS && !s.d ? await env.LINKS.get(`w:${s.u}`, "json").catch(() => null) : null;
+  if (link && link.d && s.lv === "customer") s.d = link.d;              // linked before, on another device
+  else if (link && link.d && s.c) {                                     // no membership (or the owner): no Member role
+    await discordRole(env, link.d, false).catch((e) => console.error("role removal failed:", why(e)));
+    await env.LINKS.delete(`w:${s.u}`).catch(() => {});
+  }
+  return [cookie(env, "ll_s", await seal(env, s), SESSION_S), cookie(env, "ll_in", "1", SESSION_S, false),
+    cookie(env, "ll_m", s.m ? "1" : "0", SESSION_S, false), cookie(env, "ll_o", s.lv === "admin" ? "1" : "0", SESSION_S, false),
+    cookie(env, "ll_d", s.d && s.lv === "customer" ? "1" : "0", SESSION_S, false), cookie(env, "ll_n", String(s.name || "").slice(0, 40), SESSION_S, false)];
+}
+
+function logout(env, to = "/") {
+  return redirect(to, ["ll_s", "ll_in", "ll_m", "ll_o", "ll_d", "ll_n", "ll_oauth"].map((n) => cookie(env, n, "", 0, n === "ll_s" || n === "ll_oauth")));
+}
+
+// "Start free trial": signed in first (Whop's sign-in page also makes new accounts), then Whop's checkout - signed in
+// there too, so the trial is on this account.  A member is sent to the picks instead.
+async function join(req, env) {
+  const [s, set] = await session(req, env, true);
+  if (!s) return redirect(`/auth/login?next=${encodeURIComponent("/auth/join")}`);
+  if (s.m) return redirect("/auth/welcome", set);
+  return redirect(env.JOIN_URL || "/", set);
+}
+
+// after checkout (Whop's redirect link): ask Whop now.  Whop can take a few seconds to record a new membership, so
+// a not-yet answer goes to a page that keeps checking (?welcome=pending) instead of a dead end.
+async function welcome(req, env) {
+  const [s, set] = await session(req, env, true);
+  if (!s) return redirect(`/auth/login?next=${encodeURIComponent("/auth/welcome")}`);
+  return redirect(s.m ? "/week?welcome=1" : "/week?welcome=pending", await sessionCookies(env, s));
 }
 
 // the session, re-checked with Whop when it's older than RECHECK_S; returns [session or null, Set-Cookie headers]
@@ -169,12 +206,12 @@ async function session(req, env, force = false) {
     try {
       const t = await refresh(env, await reveal(env, s.rt));
       if (t.refresh_token) s.rt = await hide(env, t.refresh_token);   // Whop may rotate it
-      s.m = await hasAccess(env, s.u, t.access_token);
+      s.lv = await hasAccess(env, s.u, t.access_token); s.m = !!s.lv;
       done = true;
     } catch (e) { errs.push(`login:${why(e)}`); }
   }
   if (!done && env.WHOP_API_KEY) {
-    try { s.m = await hasAccess(env, s.u, apiKey(env)); done = true; } catch (e) { errs.push(`key:${why(e)}`); }
+    try { s.lv = await hasAccess(env, s.u, apiKey(env)); s.m = !!s.lv; done = true; } catch (e) { errs.push(`key:${why(e)}`); }
   }
   if (done) { s.c = now(); delete s.err; } else {
     s.err = errs.join(",") || "no-way-to-check";             // shown by /api/me, so a broken re-check is visible
@@ -182,8 +219,8 @@ async function session(req, env, force = false) {
     if (now() - s.c > GRACE_S) s.m = false;                  // can't confirm for a day: treat as not a member
     else return [s, []];
   }
-  if (!s.m && s.d) await discordRole(env, s.d, false).catch(() => {});   // lapsed: the members' channel goes too
-  return [s, [cookie(env, "ll_s", await seal(env, s), SESSION_S), cookie(env, "ll_m", s.m ? "1" : "0", SESSION_S, false)]];
+  if (s.lv !== "customer" && s.d) { await discordRole(env, s.d, false).catch(() => {}); delete s.d; }   // lapsed: the channel goes too
+  return [s, await sessionCookies(env, s)];
 }
 
 // ---------------------------------------------------------------------------------------------- Discord
@@ -201,9 +238,10 @@ async function discordRole(env, discordId, give) {
 }
 
 async function discordStart(req, env) {
-  const [s] = await session(req, env);
+  const [s, set] = await session(req, env, true);                      // ask Whop now: who is this, really
   if (!s) return redirect(`/auth/login?next=${encodeURIComponent("/auth/discord")}`);
-  if (!s.m) return redirect("/#pricing");
+  if (s.lv === "admin") return redirect("/week?discord=owner", set);
+  if (!s.m) return redirect("/week?discord=not-member", set);
   const state = rand(16);
   const p = new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, response_type: "code", redirect_uri: `${env.SITE}/auth/discord/callback`,
     scope: "identify guilds.join", state });
@@ -217,7 +255,8 @@ async function discordCallback(req, env) {
   if (url.searchParams.get("error")) return done("cancelled");
   if (!st || st.s !== url.searchParams.get("state")) return done("failed-state");
   const [s] = await session(req, env);
-  if (!s || !s.m) return done("not-member");
+  if (s && s.lv === "admin") return done("owner");
+  if (!s || s.lv !== "customer") return done("not-member");
   try {
     const form = new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, client_secret: String(env.DISCORD_CLIENT_SECRET || "").trim(),
       grant_type: "authorization_code", code: url.searchParams.get("code"), redirect_uri: `${env.SITE}/auth/discord/callback` });
@@ -233,10 +272,13 @@ async function discordCallback(req, env) {
       body: JSON.stringify({ access_token, roles: [env.DISCORD_ROLE_ID] }) });
     if (join.status === 204) await discordRole(env, me.id, true);
     else if (!join.ok) throw new Error(`discord-join-${join.status}`);
+    // one Discord account per membership: linking a new one takes the role off the old one
+    const old = env.LINKS ? await env.LINKS.get(`w:${s.u}`, "json").catch(() => null) : null;
+    const prev = (old && old.d) || s.d;
+    if (prev && prev !== me.id) await discordRole(env, prev, false).catch((e) => console.error("old link role removal failed:", why(e)));
     if (env.LINKS) await env.LINKS.put(`w:${s.u}`, JSON.stringify({ d: me.id, at: now() }));
     s.d = me.id;
-    return redirect(`https://discord.com/channels/${env.DISCORD_GUILD_ID}`, [cookie(env, "ll_dstate", "", 0),
-      cookie(env, "ll_s", await seal(env, s), SESSION_S), cookie(env, "ll_d", "1", SESSION_S, false)]);
+    return redirect(`https://discord.com/channels/${env.DISCORD_GUILD_ID}`, [cookie(env, "ll_dstate", "", 0), ...(await sessionCookies(env, s))]);
   } catch (e) {
     console.error("discord link failed:", why(e));
     return done(`failed-${why(e)}`);
@@ -290,13 +332,15 @@ export default {
     try {
       if (url.pathname === "/auth/login") return await login(req, env);
       if (url.pathname === "/auth/callback") return await callback(req, env);
-      if (url.pathname === "/auth/logout") return logout(env);
+      if (url.pathname === "/auth/logout") return logout(env, url.searchParams.get("then") === "login" ? "/auth/login" : "/");
+      if (url.pathname === "/auth/join") return await join(req, env);
+      if (url.pathname === "/auth/welcome") return await welcome(req, env);
       if (url.pathname === "/auth/discord") return await discordStart(req, env);
       if (url.pathname === "/auth/discord/callback") return await discordCallback(req, env);
       if (url.pathname === "/api/whop-webhook" && req.method === "POST") return await whopWebhook(req, env);
       if (url.pathname === "/api/me") {
         const [s, set] = await session(req, env, url.searchParams.get("recheck") === "1");   // ?recheck=1: ask Whop now
-        return send(JSON.stringify(s ? { in: true, member: !!s.m, name: s.name, checked_min_ago: Math.round((now() - s.c) / 60), ...(s.err ? { recheck_error: s.err } : {}) } : { in: false, member: false }), "application/json", set);
+        return send(JSON.stringify(s ? { in: true, member: !!s.m, level: s.lv || null, discord: !!s.d, name: s.name, checked_min_ago: Math.round((now() - s.c) / 60), ...(s.err ? { recheck_error: s.err } : {}) } : { in: false, member: false }), "application/json", set);
       }
       if (url.pathname === "/api/members.js") {
         const [s, set] = await session(req, env);

@@ -7,6 +7,8 @@ window.LL_BOOT = function () {
   // week's Open section until kickoff, when the next publish reveals them (site.public_view)
   const ck = (n) => (String(document.cookie || "").match(new RegExp(`(?:^|; )${n}=([^;]*)`)) || [])[1];
   const SIGNED_IN = ck("ll_in") === "1", MEMBER = !!window.MEMBER;   // MEMBER: /api/members.js loaded the full picks
+  const OWNER = ck("ll_o") === "1";                                     // Whop's own team: full picks, no Discord role
+  const WHO = (() => { try { return decodeURIComponent(ck("ll_n") || ""); } catch (e) { return ""; } })();
   const SEALED = [];
   Object.values(D.props || {}).forEach((P) => { P.picks = P.picks.filter((p) => !(p.sealed && SEALED.push(p))); });
   // the account button: Log in; once signed in, Member (or Upgrade) and Log out
@@ -14,19 +16,22 @@ window.LL_BOOT = function () {
     if (!D.login_url) return "";
     const back = encodeURIComponent(location.pathname + location.search + location.hash);
     if (!SIGNED_IN) return `<a class="${cls}" href="${esc(D.login_url)}?next=${back}">Log in</a>`;
-    const linkDc = MEMBER && D.discord_link && ck("ll_d") !== "1";
+    const linkDc = MEMBER && !OWNER && D.discord_link && ck("ll_d") !== "1";
     const items = [
+      WHO ? `<span class="acct-who">Signed in as <b>${esc(WHO)}</b>${OWNER ? " (owner)" : MEMBER ? "" : " &middot; no membership"}</span>` : "",
       linkDc ? `<a class="dc" href="/auth/discord" title="Get the members' Discord channel: phone alerts for every pick">${brand("discord", 16)} Connect Discord</a>` : "",
       !MEMBER && D.join_url ? `<a class="up" href="${esc(D.join_url)}">Upgrade: every pick</a>` : "",
+      !MEMBER ? `<a href="/auth/logout?then=login">Switch Whop account</a>` : "",
       `<a href="/auth/logout">Log out</a>`].join("");
     if (cls !== "navlogin") return items;                                 // the phone's More sheet: plain rows
     // the top bar: one account button, its menu holds the rest (keeps the bar from crowding the tabs)
-    return `<details class="acct"><summary class="navlogin ${MEMBER ? "badge-m" : ""}">${MEMBER ? "&#10003; Member" : "Account"}${linkDc ? `<i class="acct-dot" title="Connect Discord"></i>` : ""}<i class="acct-car" aria-hidden="true"></i></summary>
+    return `<details class="acct"><summary class="navlogin ${MEMBER ? "badge-m" : ""}">${OWNER ? "&#10003; Owner" : MEMBER ? "&#10003; Member" : "Account"}${linkDc ? `<i class="acct-dot" title="Connect Discord"></i>` : ""}<i class="acct-car" aria-hidden="true"></i></summary>
       <div class="acct-pop">${items}</div></details>`;
   }
   { const q = new URLSearchParams(location.search).get("discord");
-    if (q && q !== "cancelled" && typeof alert === "function") setTimeout(() => alert(q === "not-member"
-      ? "Connecting Discord is for members. Start your free trial first." : "Discord couldn't be connected. Please try again, or message us on X."), 300); }
+    if (q && q !== "cancelled" && q !== "not-member" && typeof alert === "function") setTimeout(() => alert(q === "owner"
+      ? "You're signed in as the Whop owner. The Discord Member role is only for customers, so nothing was changed in Discord."
+      : "Discord couldn't be connected. Please try again, or message us on X."), 300); }
   const sealedOpen = () => SEALED.filter((p) => !p.kick_utc || new Date(p.kick_utc) > Date.now());
   const LOCK = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
   const page = document.body.dataset.page;
@@ -156,7 +161,7 @@ window.LL_BOOT = function () {
       ["Tools", [["sizing", "Bet sizing", SI_.size], ["odds", "Odds", SI_.odds], ["parlay", "Parlay calculator", SI_.calc], ["player", "Player lookup", SI_.player], ["alerts", "Alerts", '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/>']]
         .map(([k, label, icon]) => item(`tools.html${keep}#${k}`, label, icon, toolNow === k))],
       ["About", [item(how[1], how[2], SI_.info, here === how[0])]]];
-    const acct = !D.login_url ? "" : `<div class="side-acct">${SIGNED_IN ? `<div class="side-who">${MEMBER ? `<b class="m">&#10003; Member</b>` : `<b>Free account</b>`}</div>` : ""}${account("side-login")}</div>`;
+    const acct = !D.login_url ? "" : `<div class="side-acct">${SIGNED_IN ? `<div class="side-who">${OWNER ? `<b class="m">&#10003; Owner</b>` : MEMBER ? `<b class="m">&#10003; Member</b>` : `<b>Free account</b>`}</div>` : ""}${account("side-login")}</div>`;
     document.body.insertAdjacentHTML("afterbegin", `<aside class="side" aria-label="Menu">
       <a class="side-mark" href="${SIGNED_IN ? href(F.home) : "./"}"><i>LL</i>Line Ledger</a>
       ${sportSwitch}
@@ -1555,9 +1560,41 @@ window.LL_BOOT = function () {
         <p class="muted">The full record stays open to everyone: <a href="receptions.html">every receptions pick</a>, <a href="${F.results}">results by ${PERIOD.toLowerCase()}</a>.</p>
       </div></section>`;
   }
+  // one clear line above the page for the moments people get stuck: just joined (connect Discord), Whop still
+  // recording the purchase (keeps checking), or signed in to a Whop account that has no membership (switch / join)
+  function notice() {
+    const qs = new URLSearchParams(location.search), w = qs.get("welcome"), app = $("app");
+    if (!app || TOUR || page === "landing" || !D.login_url) return;
+    const trial = esc((D.offer || {}).trial || "membership");
+    const box = (cls, html) => app.insertAdjacentHTML("beforebegin", `<div class="wrap ll-note-wrap"><div class="ll-note ${cls}" role="status">${html}</div></div>`);
+    const dcBtn = D.discord_link ? `<a class="lp-btn gold" href="/auth/discord">${brand("discord", 18)} Connect Discord</a>` : "";
+    if (MEMBER && w === "1") {
+      const linked = ck("ll_d") === "1";
+      box("ok", `<div><b>You're in &#10003;</b> Every pick is unlocked on this site${OWNER ? "." : linked
+        ? ", and your Discord is connected: picks post in #alerts." : `. <b>Last step:</b> connect Discord to get a phone alert for every pick in #alerts.`}</div>
+        ${OWNER || linked ? "" : dcBtn}`);
+      return;
+    }
+    if (MEMBER || !SIGNED_IN) return;
+    const who = WHO ? `<b>${esc(WHO)}</b>` : "this account";
+    const stuck = () => box("warn", `<div><b>No membership on this Whop account.</b> You're signed in as ${who}.
+        <span class="ll-note-sub">Just paid? You may have checked out under a different email: log out at whop.com, then sign in again here with the email from your Whop receipt.</span></div>
+        <div class="ll-note-acts">${D.join_url ? `<a class="lp-btn gold" href="${esc(D.join_url)}">Start your ${trial}</a>` : ""}<a class="lp-btn ghost" href="/auth/logout?then=login">Switch account</a></div>`);
+    if (w !== "pending" || typeof fetch !== "function") { stuck(); return; }
+    box("wait", `<div><b>Confirming your membership with Whop&hellip;</b> This takes a few seconds after checkout.</div>`);
+    let n = 0;
+    const tick = () => fetch("/api/me?recheck=1", { cache: "no-store", credentials: "same-origin" }).then((r) => r.json()).catch(() => ({}))
+      .then((me) => {
+        if (me.member) { location.replace("/week?welcome=1"); return; }
+        if (++n < 10) { setTimeout(tick, 3000); return; }
+        document.querySelectorAll(".ll-note-wrap").forEach((x) => x.remove()); stuck();
+      });
+    setTimeout(tick, 2000);
+  }
   if (TOUR) document.documentElement.classList.add("tour");                  // the landing page's live preview (an iframe)
   if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
   else (PAGES[page] || home)();
+  notice();
 };
 
 /* ------------------------------------------------------------------ instant page switching
