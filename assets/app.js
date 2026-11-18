@@ -21,7 +21,7 @@ window.LL_BOOT = function () {
       WHO ? `<span class="acct-who">Signed in as <b>${esc(WHO)}</b>${OWNER ? " (owner)" : MEMBER ? "" : " &middot; no membership"}</span>` : "",
       linkDc ? `<a class="dc" href="/auth/discord" title="Get the members' Discord channel: phone alerts for every pick">${brand("discord", 16)} Connect Discord</a>` : "",
       !MEMBER && D.join_url ? `<a class="up" href="${esc(D.join_url)}">Upgrade: every pick</a>` : "",
-      !MEMBER ? `<a href="/auth/logout?then=login">Switch Whop account</a>` : "",
+      !MEMBER ? `<a href="/auth/logout?then=switch">Switch Whop account</a>` : "",
       `<a href="/auth/logout">Log out</a>`].join("");
     if (cls !== "navlogin") return items;                                 // the phone's More sheet: plain rows
     // the top bar: one account button, its menu holds the rest (keeps the bar from crowding the tabs)
@@ -1568,6 +1568,12 @@ window.LL_BOOT = function () {
     const trial = esc((D.offer || {}).trial || "membership");
     const box = (cls, html) => app.insertAdjacentHTML("beforebegin", `<div class="wrap ll-note-wrap"><div class="ll-note ${cls}" role="status">${html}</div></div>`);
     const dcBtn = D.discord_link ? `<a class="lp-btn gold" href="/auth/discord">${brand("discord", 18)} Connect Discord</a>` : "";
+    if (!SIGNED_IN && qs.get("switch") === "1") {      // Whop keeps its own sign-in: only the person can end it
+      box("warn", `<div><b>You're logged out of Line Ledger.</b> Whop still remembers the last account on this browser, so to use a different one:
+          <span class="ll-note-sub"><b>1.</b> Open whop.com, tap your profile picture, then <b>Log out</b>. <b>2.</b> Come back here and tap <b>Log in</b>, using the email from your Whop receipt.</span></div>
+          <div class="ll-note-acts"><a class="lp-btn ghost" href="https://whop.com/" target="_blank" rel="noopener">Open whop.com</a><a class="lp-btn gold" href="${esc(D.login_url)}?next=%2Fweek">Log in</a></div>`);
+      return;
+    }
     if (MEMBER && w === "1") {
       const linked = ck("ll_d") === "1";
       box("ok", `<div><b>You're in &#10003;</b> Every pick is unlocked on this site${OWNER ? "." : linked
@@ -1579,7 +1585,7 @@ window.LL_BOOT = function () {
     const who = WHO ? `<b>${esc(WHO)}</b>` : "this account";
     const stuck = () => box("warn", `<div><b>No membership on this Whop account.</b> You're signed in as ${who}.
         <span class="ll-note-sub">Just paid? You may have checked out under a different email: log out at whop.com, then sign in again here with the email from your Whop receipt.</span></div>
-        <div class="ll-note-acts">${D.join_url ? `<a class="lp-btn gold" href="${esc(D.join_url)}">Start your ${trial}</a>` : ""}<a class="lp-btn ghost" href="/auth/logout?then=login">Switch account</a></div>`);
+        <div class="ll-note-acts">${D.join_url ? `<a class="lp-btn gold" href="${esc(D.join_url)}">Start your ${trial}</a>` : ""}<a class="lp-btn ghost" href="/auth/logout?then=switch">Switch account</a></div>`);
     if (w !== "pending" || typeof fetch !== "function") { stuck(); return; }
     box("wait", `<div><b>Confirming your membership with Whop&hellip;</b> This takes a few seconds after checkout.</div>`);
     let n = 0;

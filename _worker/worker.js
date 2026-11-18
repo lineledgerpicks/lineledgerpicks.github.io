@@ -96,14 +96,27 @@ const why = (e) => String((e && e.message) || e).replace(/[^a-z0-9_-]/gi, "").sl
 // Whop answers 403 when the caller can't reach the product - for a person's own login, that means they have no
 // membership (seen live 2026-11-17: a new account got access-403-forbidden), so that's a "no", not an error.
 async function hasAccess(env, userId, token) {
-  let r;
-  try { r = await whopJSON(`${apiBase(env)}/users/${encodeURIComponent(userId)}/access/${encodeURIComponent(env.WHOP_PRODUCT_ID)}`, token); }
-  catch (e) { if (/^access-403/.test(String(e.message)) && token !== apiKey(env)) return null; throw e; }
+  const r = await whopJSON(`${apiBase(env)}/users/${encodeURIComponent(userId)}/access/${encodeURIComponent(env.WHOP_PRODUCT_ID)}`, token);
   return r.has_access && r.access_level !== "no_access" ? (r.access_level === "admin" ? "admin" : "customer") : null;
 }
-async function checkWithFallback(env, userId, userToken) {       // the member's token first, then the app's key
-  try { if (userToken) return await hasAccess(env, userId, userToken); } catch (e) { if (!env.WHOP_API_KEY) throw e; }
-  return hasAccess(env, userId, apiKey(env));
+// Who has access, three ways, most reliable first:
+//   1. the business's API key (WHOP_API_KEY, an Account key): can check anyone;
+//   2. the person's own Whop login: works for the owner, but Whop answers 403 to a customer asking about themselves
+//      (seen live 2026-11-17, before and after a trial started), so a 403 there proves nothing;
+//   3. Whop's membership webhooks, saved in KV (m:{user}): the last status Whop sent for this person.
+// Returns [level or null, errors]; throws only when nothing could answer.
+async function checkWithFallback(env, userId, userToken) {
+  const errs = [];
+  if (env.WHOP_API_KEY) { try { return [await hasAccess(env, userId, apiKey(env)), errs]; } catch (e) { errs.push(`key:${why(e)}`); } }
+  let userSaidNo = false;
+  if (userToken) {
+    try { const lv = await hasAccess(env, userId, userToken); if (lv) return [lv, errs]; userSaidNo = true; }
+    catch (e) { errs.push(`login:${why(e)}`); if (/^access-403/.test(String(e.message))) userSaidNo = true; }
+  }
+  const w = env.LINKS ? await env.LINKS.get(`m:${userId}`, "json").catch(() => null) : null;
+  if (w && w.s) return [KEEPS_ACCESS.has(w.s) ? "customer" : null, errs];
+  if (userSaidNo) return [null, errs];                       // nothing better to go on: not a member (yet)
+  throw new Error(errs.join(",") || "no-way-to-check");
 }
 
 async function login(req, env) {
@@ -154,11 +167,12 @@ async function callback(req, env) {
     tokens = await exchange(env, url.searchParams.get("code"), st.v);
     me = await whopJSON(`${oauthBase(env)}/userinfo`, tokens.access_token);
   } catch (e) { return fail(why(e)); }
-  let lv = null, note = "";
-  try { lv = await checkWithFallback(env, me.sub, tokens.access_token); }
+  let lv = null, note = "", errs = [];
+  try { [lv, errs] = await checkWithFallback(env, me.sub, tokens.access_token); }
   catch (e) { note = why(e); console.error("access check failed:", note); }   // signed in anyway, as a free account
+  if (errs.length) console.error("access check:", errs.join(","));
   const name = me.preferred_username || me.name || me.email || "";
-  const s = { u: me.sub, name, m: !!lv, lv, c: note ? 0 : now(), exp: now() + SESSION_S,
+  const s = { u: me.sub, name, m: !!lv, lv, c: note ? 0 : now(), exp: now() + SESSION_S, ...(errs.length ? { err: errs.join(",") } : {}),
     ...(tokens.refresh_token ? { rt: await hide(env, tokens.refresh_token) } : {}) };
   const to = note && !/^\/auth\/(join|welcome)/.test(st.n) ? `/week?signin=nocheck&why=${note}` : st.n;
   return redirect(to, [cookie(env, "ll_oauth", "", 0), ...(await sessionCookies(env, s))]);
@@ -203,21 +217,18 @@ async function session(req, env, force = false) {
   const s = await unseal(env, cookies(req).ll_s);
   if (!s) return [null, []];
   if (!force && now() - s.c < RECHECK_S) return [s, []];
-  // with the member's own login first (the way the sign-in check works), then the app's key
   const errs = [];
-  let done = false;
+  let done = false, token = null;
   if (s.rt) {
     try {
       const t = await refresh(env, await reveal(env, s.rt));
       if (t.refresh_token) s.rt = await hide(env, t.refresh_token);   // Whop may rotate it
-      s.lv = await hasAccess(env, s.u, t.access_token); s.m = !!s.lv;
-      done = true;
-    } catch (e) { errs.push(`login:${why(e)}`); }
+      token = t.access_token;
+    } catch (e) { errs.push(`refresh:${why(e)}`); }
   }
-  if (!done && env.WHOP_API_KEY) {
-    try { s.lv = await hasAccess(env, s.u, apiKey(env)); s.m = !!s.lv; done = true; } catch (e) { errs.push(`key:${why(e)}`); }
-  }
-  if (done) { s.c = now(); delete s.err; } else {
+  try { const [lv, e2] = await checkWithFallback(env, s.u, token); s.lv = lv; s.m = !!lv; done = true; errs.push(...e2); }
+  catch (e) { errs.push(why(e)); }
+  if (done) { s.c = now(); if (errs.length) s.err = errs.join(","); else delete s.err; } else {
     s.err = errs.join(",") || "no-way-to-check";             // shown by /api/me, so a broken re-check is visible
     console.error("access re-check failed:", s.err);
     if (now() - s.c > GRACE_S) s.m = false;                  // can't confirm for a day: treat as not a member
@@ -305,11 +316,17 @@ async function whopWebhook(req, env) {
   }
   if (!ok) return new Response("bad signature", { status: 401 });
   const ev = JSON.parse(body), m = ev.data || {};
-  const productId = m.product_id || (m.product && m.product.id);
-  if (!/^membership\./.test(ev.type || "") || productId !== env.WHOP_PRODUCT_ID || !m.user_id || !env.LINKS) return new Response("ok");
+  const productId = m.product_id || (m.product && m.product.id) || (m.access_pass && m.access_pass.id);
+  const userId = m.user_id || (m.user && (m.user.id || m.user)) || "";          // flat (older) or nested (v1) payloads
+  if (typeof userId !== "string") return new Response("ok");
+  m.user_id = userId;
+  if (!/^membership[._]/.test(ev.type || ev.action || "") || productId !== env.WHOP_PRODUCT_ID || !m.user_id || !env.LINKS) return new Response("ok");
+  const kind = ev.type || ev.action || "";
+  const st = m.status || (/went_invalid|deactivated/.test(kind) ? "expired" : /went_valid|activated/.test(kind) ? "active" : "");
+  if (st) await env.LINKS.put(`m:${m.user_id}`, JSON.stringify({ s: st, at: now() }));
   const link = await env.LINKS.get(`w:${m.user_id}`, "json");
   if (link && link.d) {
-    try { await discordRole(env, link.d, KEEPS_ACCESS.has(m.status)); }
+    if (st) try { await discordRole(env, link.d, KEEPS_ACCESS.has(st)); }
     catch (e) { console.error("webhook role change failed:", why(e)); return new Response("retry", { status: 500 }); }   // Whop retries
   }
   return new Response("ok");
@@ -336,7 +353,7 @@ export default {
     try {
       if (url.pathname === "/auth/login") return await login(req, env);
       if (url.pathname === "/auth/callback") return await callback(req, env);
-      if (url.pathname === "/auth/logout") return logout(env, url.searchParams.get("then") === "login" ? "/auth/login" : "/");
+      if (url.pathname === "/auth/logout") return logout(env, url.searchParams.get("then") === "switch" ? "/week?switch=1" : "/");
       if (url.pathname === "/auth/join") return await join(req, env);
       if (url.pathname === "/auth/welcome") return await welcome(req, env);
       if (url.pathname === "/auth/discord") return await discordStart(req, env);
