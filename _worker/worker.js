@@ -93,8 +93,12 @@ async function whopJSON(url, token, init = {}) {
 const apiKey = (env) => { const v = String(env.WHOP_API_KEY || ""); const m = v.match(/apik_[A-Za-z0-9_.-]+/); return m ? m[0] : v.trim(); };
 const why = (e) => String((e && e.message) || e).replace(/[^a-z0-9_-]/gi, "").slice(0, 60);
 // Whop's answer: "customer" (a paying or trial membership), "admin" (the business's own team), or null (no access)
+// Whop answers 403 when the caller can't reach the product - for a person's own login, that means they have no
+// membership (seen live 2026-11-17: a new account got access-403-forbidden), so that's a "no", not an error.
 async function hasAccess(env, userId, token) {
-  const r = await whopJSON(`${apiBase(env)}/users/${encodeURIComponent(userId)}/access/${encodeURIComponent(env.WHOP_PRODUCT_ID)}`, token);
+  let r;
+  try { r = await whopJSON(`${apiBase(env)}/users/${encodeURIComponent(userId)}/access/${encodeURIComponent(env.WHOP_PRODUCT_ID)}`, token); }
+  catch (e) { if (/^access-403/.test(String(e.message)) && token !== apiKey(env)) return null; throw e; }
   return r.has_access && r.access_level !== "no_access" ? (r.access_level === "admin" ? "admin" : "customer") : null;
 }
 async function checkWithFallback(env, userId, userToken) {       // the member's token first, then the app's key
@@ -156,7 +160,7 @@ async function callback(req, env) {
   const name = me.preferred_username || me.name || me.email || "";
   const s = { u: me.sub, name, m: !!lv, lv, c: note ? 0 : now(), exp: now() + SESSION_S,
     ...(tokens.refresh_token ? { rt: await hide(env, tokens.refresh_token) } : {}) };
-  const to = note ? `/week?signin=nocheck&why=${note}` : st.n;
+  const to = note && !/^\/auth\/(join|welcome)/.test(st.n) ? `/week?signin=nocheck&why=${note}` : st.n;
   return redirect(to, [cookie(env, "ll_oauth", "", 0), ...(await sessionCookies(env, s))]);
 }
 
