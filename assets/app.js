@@ -21,6 +21,7 @@ window.LL_BOOT = function () {
       WHO ? `<span class="acct-who">Signed in as <b>${esc(WHO)}</b>${OWNER ? " (owner)" : MEMBER ? "" : " &middot; no membership"}</span>` : "",
       linkDc ? `<a class="dc" href="/auth/discord" title="Get the members' Discord channel: phone alerts for every pick">${brand("discord", 16)} Connect Discord</a>` : "",
       !MEMBER && D.join_url ? `<a class="up" href="${esc(D.join_url)}">Upgrade: every pick</a>` : "",
+      MEMBER && !OWNER ? `<a href="https://whop.com/@me/settings/orders/" target="_blank" rel="noopener">Manage or cancel membership</a>` : "",
       !MEMBER ? `<a href="/auth/logout?then=switch">Switch Whop account</a>` : "",
       `<a href="/auth/logout">Log out</a>`].join("");
     if (cls !== "navlogin") return items;                                 // the phone's More sheet: plain rows
@@ -795,7 +796,7 @@ window.LL_BOOT = function () {
     // one story: the record (hero), last week's recap, then this week's picks (the moving strip was a third copy of
     // the open picks; marquee() stays for any page that wants it)
     $("app").innerHTML = `
-      ${past ? "" : homeRecap()}
+
       <section><h2 id="wk-title" class="sr"></h2>
         <div id="tb"></div><div id="phases" class="phases"></div></section>`;
     redraw = (full) => {
@@ -1289,7 +1290,7 @@ window.LL_BOOT = function () {
            ["Which sportsbooks?", "DraftKings and FanDuel. Each pick is priced at whichever of the two has the better price when it's made."],
            ["Is this a guarantee?", "No. These are a model's opinions, not certainties, and even good picks lose often. Every result is kept public so you can judge the record yourself. Bet only what you can afford to lose."],
            ["Can I check the record before I pay?", `Yes, it's public with no login: <a href="receptions.html">every receptions pick</a> since launch, graded, with the time it was posted.`],
-           ["How do I cancel?", "Anytime, in one click from your account. Access ends at the end of the period you paid for."],
+           ["How do I cancel?", `Anytime, in two taps: on the site, open your account menu and tap <b>Manage or cancel membership</b> (or go to <a href="https://whop.com/@me/settings/orders/" target="_blank" rel="noopener">whop.com &rarr; Profile &rarr; Orders</a>), pick Line Ledger, then <b>Cancel</b>. Nothing renews after that, and you keep access until the end of the period you already paid for.`],
            ["Who can join?", "Adults 21 and over, where sports betting is legal. If gambling stops being fun, call or text 1-800-GAMBLER (free, 24/7)."]]
       .map(([q, a]) => `<details class="drawer"><summary>${q}</summary><p>${a}</p></details>`).join("");
   }
@@ -1330,8 +1331,10 @@ window.LL_BOOT = function () {
       <div class="lp-copy lp-rv"><div class="eyebrow" style="color:#aeb9cc">NFL receptions props &middot; ${D.season} season</div>
         <h1>Every pick stamped. <em>Every result kept.</em></h1>
         <p>A model that prices every NFL receptions line at DraftKings and FanDuel. Members get each pick the moment it's made, sized for their bankroll, one tap from the bet slip. Every result stays public, wins and losses.</p>
-        <div class="lp-ctas">${cta("gold")}<a class="lp-btn ghost" href="receptions.html">See the full record</a></div>
-        <p class="lp-fine">${trial ? `${esc(trial)}, then ${esc(price)}/${esc(per)}. Cancel anytime. ` : ""}21+.${login ? ` <span class="nowrap">Members: <a href="${esc(login)}">log in</a>.</span>` : ""}</p></div>
+        <div class="lp-ctas">${cta("gold")}</div>
+        ${MEMBER ? "" : `<div class="lp-free"><span class="lp-free-l">Or start free: <b>today's free pick, every game day</b></span>
+          <div class="lp-free-b">${login && !SIGNED_IN ? `<a class="lp-btn ghost" href="${esc(login)}?next=%2Fweek">Create free account</a>` : ""}${D.discord ? `<a class="lp-btn ghost dc" href="${esc(D.discord)}" target="_blank" rel="noopener">${brand("discord", 18)} Join the free Discord</a>` : ""}</div></div>`}
+        <p class="lp-fine"><a href="receptions.html">See the full record</a> &middot; ${trial ? `${esc(trial)}, then ${esc(price)}/${esc(per)}. Cancel anytime. ` : ""}21+.${login ? ` <span class="nowrap">Members: <a href="${esc(login)}">log in</a>.</span>` : ""}</p></div>
       <div class="lp-shot lp-rv" aria-hidden="true">
         ${win("lineledgerpicks.com/week", `<div class="lp-tix">${sample(3).map(stubTicket).join("")}</div>`, "lp-back")}
         ${show.length ? `<div class="lp-front">${alertCard(show, 6)}</div>` : ""}</div></div>

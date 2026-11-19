@@ -1555,3 +1555,13 @@ td.up { color: var(--up); } td.down { color: var(--down); }
   a.navlogin { min-height: 34px; padding: 0 12px; font-size: 14px; }
 }
 @media (max-width: 380px) { .navr .social .soc:nth-child(2) { display: none; } }   /* the tiniest phones: X lives in the menu */
+
+/* landing: the free way in, right under the trial button */
+.lp-free { display: grid; gap: 10px; margin-top: 16px; padding: 14px 16px; border: 1px solid #2c3b5c; border-radius: 14px; background: rgba(255, 255, 255, .03); }
+.lp-free-l { color: #aeb9cc; font-size: 14.5px; }
+.lp-free-l b { color: #e9eef7; }
+.lp-free-b { display: flex; flex-wrap: wrap; gap: 8px; }
+.lp-free-b .lp-btn { padding: 10px 16px; font-size: 14.5px; }
+.lp-free-b .lp-btn.dc { display: inline-flex; align-items: center; gap: 8px; }
+.lp-free-b .lp-btn.dc svg { color: #8c9eff; }
+@media (max-width: 560px) { .lp-free-b .lp-btn { flex: 1 1 100%; justify-content: center; text-align: center; } }
