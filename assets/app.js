@@ -20,6 +20,8 @@ window.LL_BOOT = function () {
     const items = [
       WHO ? `<span class="acct-who">Signed in as <b>${esc(WHO)}</b>${OWNER ? " (owner)" : MEMBER ? "" : " &middot; no membership"}</span>` : "",
       linkDc ? `<a class="dc" href="/auth/discord" title="Get the members' Discord channel: phone alerts for every pick">${brand("discord", 16)} Connect Discord</a>` : "",
+      MEMBER && !OWNER && D.discord_link && ck("ll_d") === "1" ? `<span class="acct-ok">${brand("discord", 16)} Discord connected &#10003;</span>` : "",
+      canInstall() ? `<a href="#" data-install="1">Add to home screen</a>` : "",
       !MEMBER && D.join_url ? `<a class="up" href="${esc(D.join_url)}">Upgrade: every pick</a>` : "",
       MEMBER && !OWNER ? `<a href="https://whop.com/@me/settings/orders/" target="_blank" rel="noopener">Manage or cancel membership</a>` : "",
       !MEMBER ? `<a href="/auth/logout?then=switch">Switch Whop account</a>` : "",
@@ -41,6 +43,16 @@ window.LL_BOOT = function () {
   const SPORTS = D.sports && D.sports.length ? D.sports
     : [{ key: "nfl", name: "NFL", period: "Week", event: "kickoff", markets: Object.keys(D.props), files: { home: "index.html", open: "open.html", results: "results.html" } }];
   const TOUR = !!(document.documentElement.classList && document.documentElement.classList.contains("tour")) || /[?&]tour=1/.test(location.search);
+  // which phone this is, for the right "add to home screen" steps
+  const UA = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+  const IOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 1);
+  const ANDROID = /Android/.test(UA);
+  const INAPP = /FBAN|FBAV|Instagram|Twitter|Line\/|Discord|TikTok|musical_ly|Snapchat|LinkedInApp/i.test(UA);
+  const PHONE = IOS || ANDROID;
+  function canInstall() {            // a phone's browser (not the installed app, not the landing page's preview)
+    const app = typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches || (typeof navigator !== "undefined" && navigator.standalone);
+    return PHONE && !app && !document.documentElement.classList.contains("tour") && !/[?&]tour=1/.test(location.search);
+  }
   const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                   set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
   if (TOUR) { const mem = {}; store.get = (k) => (k in mem ? mem[k] : null); store.set = (k, v) => { mem[k] = v; }; }
@@ -207,8 +219,35 @@ window.LL_BOOT = function () {
   let installEvt = null;
   const standalone = () => matchMedia("(display-mode: standalone)").matches || (typeof navigator !== "undefined" && navigator.standalone);
   if (standalone()) document.documentElement.classList.add("app");   // opened from the home screen (style.css)
+  const SHARE = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>`;
+  const DOTS = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-label="menu"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>`;
+  // One slim bar above the tab bar, phones only, never in the installed app.  It shows once per visit at most, a
+  // few seconds in, and "Not now" hides it for two weeks (the account menu can always bring it back).
+  function installBar(force) {
+    if (!canInstall() || $("ib")) return;
+    if (!force) {
+      const until = +(store.get("ll-ib-until") || 0);
+      if (until > Date.now() || document.querySelector(".ll-note-wrap") || page === "landing") return;
+    }
+    const how = INAPP
+      ? `Open this page in <b>${IOS ? "Safari" : "Chrome"}</b> first (tap ${DOTS} or the share menu, then <b>Open in browser</b>), then add it from there.`
+      : IOS ? `Tap ${SHARE} <b>Share</b>, then <b>Add to Home Screen</b>.`
+      : installEvt ? `One tap: it opens like an app, full screen.` : `Tap ${DOTS} in the browser, then <b>Add to Home screen</b> (or <b>Install app</b>).`;
+    const btn = !INAPP && !IOS && installEvt ? `<button class="ib-go" id="ib-go">Install</button>` : "";
+    document.body.insertAdjacentHTML("beforeend", `<div class="ib" id="ib" role="dialog" aria-label="Add Line Ledger to your home screen">
+      <img class="ib-ic" src="assets/icon-192.png" alt="" width="40" height="40">
+      <div class="ib-t"><b>Add Line Ledger to your home screen</b><span>${how}</span></div>${btn}
+      <button class="ib-x" id="ib-x" aria-label="Not now">&times;</button></div>`);
+    requestAnimationFrame(() => $("ib").classList.add("on"));
+    const close = (snooze) => { const b = $("ib"); if (!b) return; b.classList.remove("on"); setTimeout(() => b.remove(), 250);
+      if (snooze) store.set("ll-ib-until", String(Date.now() + 14 * 864e5)); };
+    $("ib-x").onclick = () => close(true);
+    if ($("ib-go")) $("ib-go").onclick = async () => { if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch (err) {} installEvt = null; } close(false); };
+  }
+  addEventListener("appinstalled", () => { const b = $("ib"); if (b) b.remove(); store.set("ll-ib-until", String(Date.now() + 3650 * 864e5)); });
   addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; const w = $("install"); if (w) w.querySelector("span").textContent = "Tap here to install Line Ledger on this device."; });
   document.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-install]")) { e.preventDefault(); const d = e.target.closest("details"); if (d) d.open = false; installBar(true); return; }
     if (!e.target.closest("#install")) return;
     e.preventDefault();
     if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch (err) {} installEvt = null; }
@@ -1584,6 +1623,15 @@ window.LL_BOOT = function () {
         ${OWNER || linked ? "" : dcBtn}`);
       return;
     }
+    if (MEMBER && !OWNER && D.discord_link && ck("ll_d") !== "1" && ["home", "open"].includes(page)
+        && +(store.get("ll-dc-until") || 0) < Date.now()) {
+      box("dc", `<div class="dc-l">${brand("discord", 22)}<div><b>Get every pick on your phone.</b>
+          <span class="ll-note-sub">Connect Discord once: picks ping you in #alerts the moment they're made.</span></div></div>
+        <div class="ll-note-acts">${dcBtn}<button class="lp-btn ghost" id="dc-later">Later</button></div>`);
+      const later = $("dc-later");
+      if (later) later.onclick = () => { store.set("ll-dc-until", String(Date.now() + 3 * 864e5)); document.querySelectorAll(".ll-note-wrap").forEach((x) => x.remove()); };
+      return;
+    }
     if (MEMBER || !SIGNED_IN) return;
     const who = WHO ? `<b>${esc(WHO)}</b>` : "this account";
     const stuck = () => box("warn", `<div><b>No membership on this Whop account.</b> You're signed in as ${who}.
@@ -1609,6 +1657,11 @@ window.LL_BOOT = function () {
   if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
   else (PAGES[page] || home)();
   notice();
+  if (canInstall()) {
+    let seen = false;
+    try { seen = !!sessionStorage.getItem("ll-ib-seen"); sessionStorage.setItem("ll-ib-seen", "1"); } catch (e) {}
+    if (!seen) setTimeout(() => installBar(false), 6000);
+  }
 };
 
 /* ------------------------------------------------------------------ instant page switching

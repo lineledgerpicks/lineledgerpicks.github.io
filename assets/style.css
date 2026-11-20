@@ -1565,3 +1565,24 @@ td.up { color: var(--up); } td.down { color: var(--down); }
 .lp-free-b .lp-btn.dc { display: inline-flex; align-items: center; gap: 8px; }
 .lp-free-b .lp-btn.dc svg { color: #8c9eff; }
 @media (max-width: 560px) { .lp-free-b .lp-btn { flex: 1 1 100%; justify-content: center; text-align: center; } }
+
+/* add to home screen: one slim bar above the phone's tab bar */
+.ib { position: fixed; z-index: 70; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; border-radius: 18px;
+  background: color-mix(in srgb, var(--board) 92%, transparent); color: #e9eef7; border: 1px solid rgba(255, 255, 255, .14);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: 0 14px 36px rgba(0, 0, 0, .45);
+  transform: translateY(140%); opacity: 0; transition: transform .3s ease, opacity .3s ease; }
+.ib.on { transform: none; opacity: 1; }
+@media (max-width: 680px) { body:not([data-page="landing"]) .ib { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } }
+.ib-ic { flex: none; width: 40px; height: 40px; border-radius: 10px; }
+.ib-t { flex: 1; min-width: 0; display: grid; gap: 2px; font-size: 13.5px; line-height: 1.35; }
+.ib-t b { font-size: 14.5px; }
+.ib-t span { color: #b8c3d6; } .ib-t span b { color: #fff; font-size: inherit; }
+.ib-t svg { vertical-align: -3px; color: var(--board-text); }
+.ib-go { flex: none; padding: 9px 14px; border: 0; border-radius: 12px; background: #eeb04f; color: #1b1203; font: 800 14px/1 var(--body); }
+.ib-x { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .1); color: #fff; font-size: 20px; line-height: 1; }
+/* connect Discord: a slim strip for members who haven't yet */
+.ll-note.dc { border-color: rgba(88, 101, 242, .6); box-shadow: 0 0 0 3px rgba(88, 101, 242, .14); }
+.ll-note.dc .dc-l { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ll-note.dc .dc-l > svg { flex: none; color: #8c9eff; }
+.acct-ok { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--up); font-size: 13.5px; }
