@@ -239,6 +239,7 @@ window.LL_BOOT = function () {
       <div class="ib-t"><b>Add Line Ledger to your home screen</b><span>${how}</span></div>${btn}
       <button class="ib-x" id="ib-x" aria-label="Not now">&times;</button></div>`);
     requestAnimationFrame(() => $("ib").classList.add("on"));
+    try { sessionStorage.setItem("ll-ib-seen", "1"); } catch (e) {}           // this visit has seen it
     const close = (snooze) => { const b = $("ib"); if (!b) return; b.classList.remove("on"); setTimeout(() => b.remove(), 250);
       if (snooze) store.set("ll-ib-until", String(Date.now() + 14 * 864e5)); };
     $("ib-x").onclick = () => close(true);
@@ -1657,10 +1658,10 @@ window.LL_BOOT = function () {
   if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
   else (PAGES[page] || home)();
   notice();
-  if (canInstall()) {
+  if (canInstall() && !window.__llIbTimer) {
     let seen = false;
-    try { seen = !!sessionStorage.getItem("ll-ib-seen"); sessionStorage.setItem("ll-ib-seen", "1"); } catch (e) {}
-    if (!seen) setTimeout(() => installBar(false), 6000);
+    try { seen = !!sessionStorage.getItem("ll-ib-seen"); } catch (e) {}
+    if (!seen) window.__llIbTimer = setTimeout(() => { window.__llIbTimer = null; installBar(false); }, 6000);
   }
 };
 
