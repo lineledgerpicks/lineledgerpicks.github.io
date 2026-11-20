@@ -227,7 +227,9 @@ window.LL_BOOT = function () {
     if (!canInstall() || $("ib")) return;
     if (!force) {
       const until = +(store.get("ll-ib-until") || 0);
-      if (until > Date.now() || document.querySelector(".ll-note-wrap") || page === "landing") return;
+      // one onboarding step at a time: wait while Connect Discord / "You're in" / "Confirming" is showing (the
+      // no-membership note on free accounts doesn't count - it's always there for them)
+      if (until > Date.now() || document.querySelector(".ll-note.dc, .ll-note.ok, .ll-note.wait") || page === "landing") return;
     }
     const how = INAPP
       ? `Open this page in <b>${IOS ? "Safari" : "Chrome"}</b> first (tap ${DOTS} or the share menu, then <b>Open in browser</b>), then add it from there.`
