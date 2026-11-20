@@ -859,15 +859,41 @@ window.LL_BOOT = function () {
   function resultsPage() {
     hero("Results", `${PERIOD} by <em>${PERIOD.toLowerCase()}</em>`, "Every graded " + PERIOD.toLowerCase() + ", at a glance.");
     const keys = [...new Set(MK.flatMap((k) => Object.keys(MKT(k).weeks)))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-    const cards = keys.map((key) => { const [season, w] = key.split("-");
-      return `<a class="wkcard" href="${href(F.home)}?season=${season}&week=${w}"><div class="wk-h"><b>${PERIOD} ${w}</b><span class="muted">${season}</span></div>
-        <div class="wk-m">${MK.map((k) => `<div><em>${esc(MKT(k).short || MKT(k).label)}</em><span>${recLine(MKT(k).weeks[key])}</span></div>`).join("")}</div><span class="wk-go">Open &rarr;</span></a>`; }).join("");
+    const prw = {};                                                      // the model's parlays, graded, by week
+    (PR.model || []).filter((x) => x.result).forEach((x) => { (prw[`${x.season}-${x.week}`] ||= []).push(x); });
+    const cell = (r) => !r || !(r.W + r.L + (r.P || 0)) ? `<span class="muted">${r && (r.n || r.pending) ? "in progress" : "&ndash;"}</span>`
+      : `<b>${wl(r)}</b><b class="${tone(r.sized)}">${num(r.sized || 0, 1, true)}u</b>`;
+    const row = (key) => { const [season, w] = key.split("-"), px = prw[key] || [];
+      const pr = px.length ? `<span class="wr-m"><em>Parlays</em><b>${px.filter((x) => x.result === "W").length}-${px.filter((x) => x.result === "L").length}</b></span>` : "";
+      return `<a class="wkrow" href="${href(F.home)}?season=${season}&week=${w}"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
+        <span class="wr-ms">${MK.map((k) => `<span class="wr-m"><em>${esc(MKT(k).short || MKT(k).label)}</em>${cell(MKT(k).weeks[key])}</span>`).join("")}${pr}</span>
+        <span class="wr-go" aria-hidden="true">&rsaquo;</span></a>`; };
+    const SHOW = 4;
+    const weeks = keys.length ? `<div class="wkrows">${keys.slice(0, SHOW).map(row).join("")}</div>
+      ${keys.length > SHOW ? `<details class="wk-more"><summary>Show all ${keys.length} ${PERIOD.toLowerCase()}s</summary><div class="wkrows">${keys.slice(SHOW).map(row).join("")}</div></details>` : ""}`
+      : `<div class="empty">No graded ${PERIOD.toLowerCase()}s yet.</div>`;
+    // the season, one market at a time (a switch, not a wall of cards and charts)
+    const pick = (() => { const s = store.get("ll-mk"); return MK.includes(s) ? s : MK.includes("receptions") ? "receptions" : MK[0]; })();
+    const season = MK.map((k) => { const P = MKT(k);
+      return `<div class="sea-p" data-mk="${k}"${k === pick ? "" : " hidden"}>${tote(P.record, P, true)}${unitsChart(P)}
+        <a class="sea-all" href="${P.slug}.html">Every ${esc(P.short || P.label)} pick &rarr;</a></div>`; }).join("");
     const r = latestRecap();
     $("app").innerHTML = `${r ? `<section>${recapCard(r)}</section>` : ""}
-      <section><div><h2>Totals</h2></div><div class="boards light">${MK.map((k) => { const P = MKT(k);
-        return `<a class="sb" href="${P.slug}.html"><div class="sb-h"><span>${esc(P.label)}</span>${P.paper ? `<span class="chip paper">paper</span>` : `<span class="chip rec">the record</span>`}</div>${tote(P.record, P, true)}</a>`; }).join("")}</div>
-        <div class="charts">${MK.map((k) => unitsChart(MKT(k))).join("")}</div></section>
-      <section><div><h2>Every ${PERIOD.toLowerCase()}</h2></div><div class="wkcards">${cards || `<div class="empty">No graded ${PERIOD.toLowerCase()}s yet.</div>`}</div></section>`;
+      <section><div class="head"><div><h2>This season</h2></div>
+        ${MK.length > 1 ? `<div class="mk-switch" role="tablist">${MK.map((k) => `<button type="button" role="tab" data-mk="${k}" aria-selected="${k === pick}">${esc(MKT(k).short || MKT(k).label)}</button>`).join("")}</div>` : ""}</div>
+        <div class="season">${season}</div></section>
+      <section><div class="head"><div><h2>Every ${PERIOD.toLowerCase()}</h2></div></div>${weeks}</section>`;
+  }
+  if (!window.__llMkSwitch) {                                         // the season card's market switch
+    window.__llMkSwitch = true;
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest(".mk-switch button[data-mk]");
+      if (!b) return;
+      const k = b.dataset.mk;
+      document.querySelectorAll(".mk-switch button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.mk === k)));
+      document.querySelectorAll(".sea-p").forEach((x) => { x.hidden = x.dataset.mk !== k; });
+      store.set("ll-mk", k);
+    });
   }
 
   function marketPage(key) {
@@ -1038,18 +1064,30 @@ window.LL_BOOT = function () {
     const weeks = [...new Set(PR.model.map((x) => `${x.season}-${x.week}`))];
     const cur = weeks.length ? weeks[weeks.length - 1] : null;
     const now = cur ? PR.model.filter((x) => `${x.season}-${x.week}` === cur && !(x.locked && x.result)) : [];
-    const past = PR.model.filter((x) => x.locked && x.legs.length && !now.includes(x)).slice().reverse();
-    hero(`Model parlays${cur ? ` &middot; ${PERIOD} ${cur.split("-")[1]}` : ""}`, "This week's <em>parlays</em>", "",
+    const past = PR.model.filter((x) => x.locked && x.legs.length && !now.includes(x));
+    hero(`Model parlays${cur ? ` &middot; ${PERIOD} ${cur.split("-")[1]}` : ""}`, "This week's <em>parlays</em>",
+      `${PR.legs || 3} legs from different Sunday games, one book each. They lock at the first Sunday kickoff.`,
       now.length ? `<div class="pm-grid hero-pm">${now.map((x) => modelCard(x, true)).join("")}</div>` : `<div class="empty">No parlay this ${PERIOD.toLowerCase()} yet. They fill in as Sunday lines are posted.</div>`);
-    const rec = PR.record || {};
-    const recRow = (label, r) => `<tr><td>${esc(label)}</td><td class="num">${r.n || 0}</td><td class="num">${r.n ? `${r.W}-${r.L}${r.P ? "-" + r.P : ""}` : "&ndash;"}</td><td class="num ${tone(r.units)}">${r.n ? num(r.units, 2, true) + "u" : "&ndash;"}</td><td class="num opt ${tone(r.roi)}">${pct(r.roi)}</td></tr>`;
+    const rec = PR.record || {}, all = rec.all || {};
+    const chip = (label, r) => `<span class="pr-chip"><em>${esc(label)}</em><b>${r.W}-${r.L}${r.P ? "-" + r.P : ""}</b><b class="${tone(r.units)}">${num(r.units, 2, true)}u</b></span>`;
+    const strip = all.n ? `<div class="pr-strip">
+        <div class="pr-main"><span class="pr-k">Parlay record</span><b class="pr-wl">${all.W}-${all.L}${all.P ? "-" + all.P : ""}</b>
+          <b class="pr-u ${tone(all.units)}">${num(all.units, 2, true)}u</b><span class="pr-roi ${tone(all.roi)}">${pct(all.roi)} ROI</span></div>
+        <div class="pr-books">${PBOOKS.filter((b) => rec[b] && rec[b].n).map((b) => chip(b, rec[b])).join("")}</div></div>`
+      : `<div class="empty">No model parlay has been graded yet. The first ones lock at this week's first Sunday kickoff.</div>`;
+    // past weeks: one tidy row each, newest first; tap to see that week's parlays
+    const byWeek = {};
+    past.forEach((x) => { (byWeek[`${x.season}-${x.week}`] ||= []).push(x); });
+    const rows = Object.keys(byWeek).sort((a, b) => b.localeCompare(a, undefined, { numeric: true })).map((key) => {
+      const xs = byWeek[key], [season, w] = key.split("-");
+      const u = xs.reduce((s, x) => s + (x.units || 0), 0);
+      const marks = xs.map((x) => `<span class="pw-b ${x.result ? "res-" + x.result : ""}" title="${esc(x.book)}"><i class="bkdot ${BOOKDOT[x.book] || ""}"></i>${x.result === "W" ? "&#10003;" : x.result === "L" ? "&#10007;" : x.result === "P" ? "P" : "&middot;"}</span>`).join("");
+      return `<details class="pw"><summary><span class="pw-w"><b>${PERIOD} ${w}</b><small>${season}</small></span><span class="pw-bs">${marks}</span>
+          <b class="pw-u ${tone(u)}">${num(u, 2, true)}u</b><span class="pw-car" aria-hidden="true">&rsaquo;</span></summary>
+        <div class="pm-grid">${xs.map((x) => modelCard(x)).join("")}</div></details>`; }).join("");
     $("app").innerHTML = `
-
-      <section><div class="head"><div><h2>Parlay record</h2></div></div>
-        ${rec.all && rec.all.n ? `<div class="tablebox"><table><thead><tr><th>Book</th><th class="num">Parlays</th><th class="num">W-L-P</th><th class="num">Units</th><th class="num opt">ROI</th></tr></thead><tbody>
-          ${recRow("All", rec.all)}${PBOOKS.filter((b) => rec[b]).map((b) => recRow(b, rec[b])).join("")}</tbody></table></div>`
-          : `<div class="empty">No model parlay has been graded yet. The first ones lock at this week's first Sunday kickoff.</div>`}
-        ${past.length ? `<div class="pm-grid">${past.map((x) => modelCard(x)).join("")}</div>` : ""}</section>`;
+      <section>${strip}</section>
+      ${rows ? `<section><div class="head"><div><h2>Past ${PERIOD.toLowerCase()}s</h2></div></div><div class="pws">${rows}</div></section>` : ""}`;
   }
 
   /* ------------------------------------------------------------------ Tools: bet sizing, odds, parlays, player lookup.
