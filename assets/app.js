@@ -884,8 +884,7 @@ window.LL_BOOT = function () {
         <div class="season">${season}</div></section>
       <section><div class="head"><div><h2>Every ${PERIOD.toLowerCase()}</h2></div></div>${weeks}</section>`;
   }
-  if (!window.__llMkSwitch) {                                         // the season card's market switch
-    window.__llMkSwitch = true;
+  {                                                                   // the season card's market switch
     document.addEventListener("click", (e) => {
       const b = e.target.closest(".mk-switch button[data-mk]");
       if (!b) return;
@@ -1042,22 +1041,26 @@ window.LL_BOOT = function () {
   const BOOKDOT = { DraftKings: "dk", FanDuel: "fd" };
   // one model parlay as a slip: the book, what it pays, the legs joined like a ticket, and both chances as meters
   function modelCard(x, big) {
-    const state = x.result ? `<span class="pill res-${x.result}">${x.result === "W" ? `Won ${num(x.units, 2, true)}u` : x.result === "L" ? "Lost -1u" : "Push"}</span>`
-      : x.locked ? `<span class="pill">Locked ${when(x.lock_utc, x.lock)}</span>`
-      : `<span class="pill building">Locks ${when(x.lock_utc, x.lock)}</span>`;
-    const head = `<header><span class="pm-book"><i class="bkdot ${BOOKDOT[x.book] || ""}" aria-hidden="true"></i>${esc(x.book)}</span>${state}</header>`;
-    if (!x.legs.length) return `<article class="pm-card${big ? " big" : ""}">${head}
-      <p class="ps-note">${x.locked ? `Fewer than ${PR.legs} Sunday games had a pick at ${esc(x.book)} at the lock, so there was no parlay this ${PERIOD.toLowerCase()}.` : `Not enough Sunday picks at ${esc(x.book)} yet. It fills in as lines are posted.`}</p></article>`;
-    const meter = (label, v, cls) => `<div class="pm-meter ${cls}"><span>${label}</span><b>${pct(v, false)}</b><i style="--v:${Math.max(2, Math.min(100, v || 0))}%"></i></div>`;
+    const bk = BOOKDOT[x.book] || "";
+    const status = x.result ? `<span class="pc-res ${x.result}">${x.result === "W" ? `Won ${num(x.units, 2, true)}u` : x.result === "L" ? "Lost &minus;1u" : "Push"}</span>`
+      : `<span class="pc-lock${x.locked ? " on" : ""}">${LOCK}${x.locked ? "Locked" : "Locks"} ${when(x.lock_utc, x.lock)}</span>`;
+    const head = `<header class="pc-h"><span class="pc-book"><i class="pc-dot ${bk}"></i>${esc(x.book)}</span>${status}</header>`;
+    if (!x.legs.length) return `<article class="pc ${bk}${big ? " big" : ""}">${head}
+      <p class="pc-note">${x.locked ? `Fewer than ${PR.legs} Sunday games had a pick at ${esc(x.book)} at the lock, so there was no parlay this ${PERIOD.toLowerCase()}.` : `Not enough Sunday picks at ${esc(x.book)} yet. It fills in as lines are posted.`}</p></article>`;
     const dec = x.american > 0 ? 1 + x.american / 100 : 1 + 100 / -x.american;
-    return `<article class="pm-card${big ? " big" : ""}${x.result ? " res-" + x.result : ""}">${head}
-      <div class="pm-pay"><b>${odds(x.american)}</b><span>$10 pays $${(10 * dec).toFixed(2)}</span></div>
-      <ol class="pm-legs">${x.legs.map((l) => { if (l.sealed) return `<li class="pm-sealed"><span class="pm-r"></span><span class="pm-sl">${LOCK}<b>Sealed leg</b><span>revealed at kickoff</span></span><span class="mono"></span></li>`;
-        const p = byId[l.serial];
-        return `<li><span class="pm-r ${l.result || ""}">${l.result ? RES[l.result] : ""}</span><a href="${p ? pageOf(p) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><span>${l.side} ${l.line} ${short(l.prop)}</span></a>
-          <span class="mono">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : l.win != null ? `<small>${pct(l.win, false)} to win</small>` : ""}</span></li>`; }).join("")}</ol>
-      <div class="pm-meters">${meter("Model's chance", x.model_chance, "model")}${meter("Book's chance", x.book_chance, "book")}</div>
-      <footer class="muted">${x.locked ? `Stamped at the lock, ${when(x.lock_utc, x.lock)}` : `Updated ${esc(x.built || "")} ET &middot; place it at ${esc(x.book)}`}</footer></article>`;
+    const legs = x.legs.map((l, i) => {
+      if (l.sealed) return `<li class="pc-leg sealed"><span class="pc-n">${i + 1}</span><span class="pc-who"><b class="pc-blur">Sealed leg</b><small>${LOCK} revealed at kickoff</small></span><span class="pc-px"></span></li>`;
+      const p = byId[l.serial];
+      return `<li class="pc-leg ${l.result || ""}"><span class="pc-n">${l.result ? RES[l.result] : i + 1}</span>
+        <a class="pc-who" href="${p ? pageOf(p) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><small>${l.side} ${l.line} ${short(l.prop)}</small></a>
+        <span class="pc-px">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : ""}</span></li>`; }).join("");
+    const m = x.model_chance || 0, bkc = x.book_chance || 0, edge = m - bkc;
+    return `<article class="pc ${bk}${big ? " big" : ""}${x.result ? " done res-" + x.result : ""}">${head}
+      <div class="pc-pay"><b>${odds(x.american)}</b><span>$10 &rarr; <em>$${(10 * dec).toFixed(2)}</em></span></div>
+      <ol class="pc-legs">${legs}</ol>
+      <div class="pc-vs"><div class="pc-vs-t"><span>Model <b>${pct(m, false)}</b></span><span class="pc-edge ${edge >= 0 ? "up" : "down"}">${edge >= 0 ? "+" : ""}${edge.toFixed(1)} pts</span><span>Book <b>${pct(bkc, false)}</b></span></div>
+        <div class="pc-bar"><i class="m" style="--v:${Math.max(2, Math.min(100, m))}%"></i><i class="b" style="--v:${Math.max(2, Math.min(100, bkc))}%"></i></div></div>
+      <footer class="pc-f">${x.locked ? `Stamped at the lock &middot; ${when(x.lock_utc, x.lock)}` : `Updated ${esc(x.built || "")} ET &middot; place it at ${esc(x.book)}`}</footer></article>`;
   }
 
   function parlaysPage() {
@@ -1067,7 +1070,7 @@ window.LL_BOOT = function () {
     const past = PR.model.filter((x) => x.locked && x.legs.length && !now.includes(x));
     hero(`Model parlays${cur ? ` &middot; ${PERIOD} ${cur.split("-")[1]}` : ""}`, "This week's <em>parlays</em>",
       `${PR.legs || 3} legs from different Sunday games, one book each. They lock at the first Sunday kickoff.`,
-      now.length ? `<div class="pm-grid hero-pm">${now.map((x) => modelCard(x, true)).join("")}</div>` : `<div class="empty">No parlay this ${PERIOD.toLowerCase()} yet. They fill in as Sunday lines are posted.</div>`);
+      now.length ? `<div class="pc-grid hero-pc">${now.map((x) => modelCard(x, true)).join("")}</div>` : `<div class="empty">No parlay this ${PERIOD.toLowerCase()} yet. They fill in as Sunday lines are posted.</div>`);
     const rec = PR.record || {}, all = rec.all || {};
     const chip = (label, r) => `<span class="pr-chip"><em>${esc(label)}</em><b>${r.W}-${r.L}${r.P ? "-" + r.P : ""}</b><b class="${tone(r.units)}">${num(r.units, 2, true)}u</b></span>`;
     const strip = all.n ? `<div class="pr-strip">
@@ -1084,7 +1087,7 @@ window.LL_BOOT = function () {
       const marks = xs.map((x) => `<span class="pw-b ${x.result ? "res-" + x.result : ""}" title="${esc(x.book)}"><i class="bkdot ${BOOKDOT[x.book] || ""}"></i>${x.result === "W" ? "&#10003;" : x.result === "L" ? "&#10007;" : x.result === "P" ? "P" : "&middot;"}</span>`).join("");
       return `<details class="pw"><summary><span class="pw-w"><b>${PERIOD} ${w}</b><small>${season}</small></span><span class="pw-bs">${marks}</span>
           <b class="pw-u ${tone(u)}">${num(u, 2, true)}u</b><span class="pw-car" aria-hidden="true">&rsaquo;</span></summary>
-        <div class="pm-grid">${xs.map((x) => modelCard(x)).join("")}</div></details>`; }).join("");
+        <div class="pc-grid">${xs.map((x) => modelCard(x)).join("")}</div></details>`; }).join("");
     $("app").innerHTML = `
       <section>${strip}</section>
       ${rows ? `<section><div class="head"><div><h2>Past ${PERIOD.toLowerCase()}s</h2></div></div><div class="pws">${rows}</div></section>` : ""}`;
