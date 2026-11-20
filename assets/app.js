@@ -1040,12 +1040,12 @@ window.LL_BOOT = function () {
   const RES = { W: "&#10003;", L: "&#10007;", P: "P", VOID: "void" };
   const BOOKDOT = { DraftKings: "dk", FanDuel: "fd" };
   // one model parlay as a slip: the book, what it pays, the legs joined like a ticket, and both chances as meters
-  function modelCard(x, big) {
+  function modelCard(x, big, on) {
     const bk = BOOKDOT[x.book] || "";
     const status = x.result ? `<span class="pc-res ${x.result}">${x.result === "W" ? `Won ${num(x.units, 2, true)}u` : x.result === "L" ? "Lost &minus;1u" : "Push"}</span>`
       : `<span class="pc-lock${x.locked ? " on" : ""}">${LOCK}${x.locked ? "Locked" : "Locks"} ${when(x.lock_utc, x.lock)}</span>`;
     const head = `<header class="pc-h"><span class="pc-book"><i class="pc-dot ${bk}"></i>${esc(x.book)}</span>${status}</header>`;
-    if (!x.legs.length) return `<article class="pc ${bk}${big ? " big" : ""}">${head}
+    if (!x.legs.length) return `<article class="pc ${bk}${big ? " big" : ""}${on ? " on" : ""}" data-bk="${bk}">${head}
       <p class="pc-note">${x.locked ? `Fewer than ${PR.legs} Sunday games had a pick at ${esc(x.book)} at the lock, so there was no parlay this ${PERIOD.toLowerCase()}.` : `Not enough Sunday picks at ${esc(x.book)} yet. It fills in as lines are posted.`}</p></article>`;
     const dec = x.american > 0 ? 1 + x.american / 100 : 1 + 100 / -x.american;
     const legs = x.legs.map((l, i) => {
@@ -1055,7 +1055,7 @@ window.LL_BOOT = function () {
         <a class="pc-who" href="${p ? pageOf(p) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><small>${l.side} ${l.line} ${short(l.prop)}</small></a>
         <span class="pc-px">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : ""}</span></li>`; }).join("");
     const m = x.model_chance || 0, bkc = x.book_chance || 0, edge = m - bkc;
-    return `<article class="pc ${bk}${big ? " big" : ""}${x.result ? " done res-" + x.result : ""}">${head}
+    return `<article class="pc ${bk}${big ? " big" : ""}${on ? " on" : ""}${x.result ? " done res-" + x.result : ""}" data-bk="${bk}">${head}
       <div class="pc-pay"><b>${odds(x.american)}</b><span>$10 &rarr; <em>$${(10 * dec).toFixed(2)}</em></span></div>
       <ol class="pc-legs">${legs}</ol>
       <div class="pc-vs"><div class="pc-vs-t"><span>Model <b>${pct(m, false)}</b></span><span class="pc-edge ${edge >= 0 ? "up" : "down"}">${edge >= 0 ? "+" : ""}${edge.toFixed(1)} pts</span><span>Book <b>${pct(bkc, false)}</b></span></div>
@@ -1070,7 +1070,8 @@ window.LL_BOOT = function () {
     const past = PR.model.filter((x) => x.locked && x.legs.length && !now.includes(x));
     hero(`Model parlays${cur ? ` &middot; ${PERIOD} ${cur.split("-")[1]}` : ""}`, "This week's <em>parlays</em>",
       `${PR.legs || 3} legs from different Sunday games, one book each. They lock at the first Sunday kickoff.`,
-      now.length ? `<div class="pc-grid hero-pc">${now.map((x) => modelCard(x, true)).join("")}</div>` : `<div class="empty">No parlay this ${PERIOD.toLowerCase()} yet. They fill in as Sunday lines are posted.</div>`);
+      now.length ? `${now.length > 1 ? `<div class="pc-tabs" role="tablist" aria-label="Book">${now.map((x, i) => `<button type="button" role="tab" data-bk="${BOOKDOT[x.book] || ""}" aria-selected="${i === 0}"><i class="pc-dot ${BOOKDOT[x.book] || ""}"></i>${esc(x.book)}<b>${x.legs.length ? odds(x.american) : "&ndash;"}</b></button>`).join("")}</div>` : ""}
+        <div class="pc-grid hero-pc">${now.map((x, i) => modelCard(x, true, i === 0)).join("")}</div>` : `<div class="empty">No parlay this ${PERIOD.toLowerCase()} yet. They fill in as Sunday lines are posted.</div>`);
     const rec = PR.record || {}, all = rec.all || {};
     const chip = (label, r) => `<span class="pr-chip"><em>${esc(label)}</em><b>${r.W}-${r.L}${r.P ? "-" + r.P : ""}</b><b class="${tone(r.units)}">${num(r.units, 2, true)}u</b></span>`;
     const strip = all.n ? `<div class="pr-strip">
@@ -1088,6 +1089,12 @@ window.LL_BOOT = function () {
       return `<details class="pw"><summary><span class="pw-w"><b>${PERIOD} ${w}</b><small>${season}</small></span><span class="pw-bs">${marks}</span>
           <b class="pw-u ${tone(u)}">${num(u, 2, true)}u</b><span class="pw-car" aria-hidden="true">&rsaquo;</span></summary>
         <div class="pc-grid">${xs.map((x) => modelCard(x)).join("")}</div></details>`; }).join("");
+    document.addEventListener("click", (e) => {                        // the book switch (phones)
+      const b = e.target.closest(".pc-tabs button[data-bk]");
+      if (!b) return;
+      document.querySelectorAll(".pc-tabs button").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+      document.querySelectorAll(".hero-pc > .pc").forEach((c) => c.classList.toggle("on", c.dataset.bk === b.dataset.bk));
+    });
     $("app").innerHTML = `
       <section>${strip}</section>
       ${rows ? `<section><div class="head"><div><h2>Past ${PERIOD.toLowerCase()}s</h2></div></div><div class="pws">${rows}</div></section>` : ""}`;

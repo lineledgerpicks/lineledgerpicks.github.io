@@ -1645,13 +1645,6 @@ td.up { color: var(--up); } td.down { color: var(--down); }
   .pr-wl { font-size: 30px; }
 }
 
-@media (max-width: 680px) {            /* this week's parlays: swipe between the books instead of a tall stack */
-  .pm-grid.hero-pm { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px;
-    margin: 0 -16px; padding-left: 16px; padding-right: 16px; scrollbar-width: none; }
-  .pm-grid.hero-pm::-webkit-scrollbar { display: none; }
-  .pm-grid.hero-pm > .pm-card { flex: 0 0 86%; scroll-snap-align: center; }
-}
-@media (max-width: 680px) { .pm-grid.hero-pm .pm-sl { white-space: nowrap; } .pm-grid.hero-pm .pm-sl span { font-size: 12px; } }
 
 /* ==== the parlay card (2026-11-20): a ticket with a book-colored glow, a leg rail and model vs book ==== */
 .pc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
@@ -1701,9 +1694,25 @@ a.pc-who:hover b { text-decoration: underline; }
 .pc-note { color: #b8c3d6; margin: 0; }
 .pc.done { opacity: .96; }
 .pw > .pc-grid { padding: 0 12px 14px; }
+
+/* parlays: never wider than the screen; a book switch on phones */
+.pc-grid, .pc, .pc-legs, .pc-leg, .pc-who { min-width: 0; max-width: 100%; }
+.hero .pc-grid { width: 100%; }
+.pc-leg { background: none; border: 0; border-radius: 0; margin: 0; }
+.pc-leg + .pc-leg { border-top: 1px solid rgba(255, 255, 255, .05); }
+.pc-tabs { display: none; }
 @media (max-width: 680px) {
-  .pc-grid.hero-pc { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 4px 16px 8px; scrollbar-width: none; }
-  .pc-grid.hero-pc::-webkit-scrollbar { display: none; }
-  .pc-grid.hero-pc > .pc { flex: 0 0 86%; scroll-snap-align: center; }
+  .pc-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; margin-bottom: 12px; border-radius: 14px;
+    background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); }
+  .pc-tabs button { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 8px; border: 0; border-radius: 10px; cursor: pointer;
+    background: transparent; color: #9aa6bd; font: 800 14px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+  .pc-tabs button b { font: 700 13px/1 var(--mono); letter-spacing: 0; color: inherit; opacity: .85; }
+  .pc-tabs button[aria-selected="true"] { background: #16233d; color: #fff; box-shadow: 0 6px 18px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .08); }
+  .pc-tabs .pc-dot.dk { --bk: #53d769; } .pc-tabs .pc-dot.fd { --bk: #1e90ff; }
+  .hero-pc { grid-template-columns: 1fr; }
+  .hero-pc > .pc:not(.on) { display: none; }
+  .pc { padding: 16px; }
   .pc.big .pc-pay b { font-size: 46px; }
 }
+.pc-lock { white-space: nowrap; }
+@media (max-width: 680px) { .pc-lock { font-size: 10.5px; padding: 6px 8px; } .pc-book { font-size: 18px; } }
