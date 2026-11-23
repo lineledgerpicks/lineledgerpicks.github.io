@@ -1893,9 +1893,11 @@ window.LL_BOOT = function () {
   if (TOUR) document.documentElement.classList.add("tour");                  // the landing page's live preview (an iframe)
   // the home-screen app opens This week (older installs saved week.html as their start page); signed out, it shows
   // the front page instead - features, pricing and the free trial - like the website does
-  // (only as the app opens: a tap on Week later still shows the free-account page)
+  // (only as the app opens: a tap on Week later still shows the free-account page).  A browser tab gets the same rule:
+  // signed out and arriving at /week from outside the site (typed, autofilled, bookmarked) shows the front page first
   const opening = (() => { try { if (sessionStorage.getItem("ll-open")) return false; sessionStorage.setItem("ll-open", "1"); return true; } catch (e) { return false; } })();
-  if (D.landing && D.gate && D.login_url && !SIGNED_IN && !TOUR && page === "home" && standalone() && !location.search && opening) { location.replace("./"); return; }
+  const fromOutside = (() => { try { return !document.referrer || new URL(document.referrer).origin !== location.origin; } catch (e) { return true; } })();
+  if (D.landing && D.gate && D.login_url && !SIGNED_IN && !TOUR && page === "home" && (standalone() || fromOutside) && !location.search && opening) { location.replace("./"); return; }
   if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
   else (PAGES[page] || home)();
   notice();
