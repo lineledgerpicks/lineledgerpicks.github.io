@@ -6,9 +6,10 @@ window.LL_BOOT = function () {
   // sealed picks: open picks members see first.  They stay out of every list and record, and show as seals in This
   // week's Open section until kickoff, when the next publish reveals them (site.public_view)
   const ck = (n) => (String(document.cookie || "").match(new RegExp(`(?:^|; )${n}=([^;]*)`)) || [])[1];
-  const SIGNED_IN = ck("ll_in") === "1", MEMBER = !!window.MEMBER;   // MEMBER: /api/members.js loaded the full picks
-  const OWNER = ck("ll_o") === "1";                                     // Whop's own team: full picks, no Discord role
-  const WHO = (() => { try { return decodeURIComponent(ck("ll_n") || ""); } catch (e) { return ""; } })();
+  const PV = D.preview_as || "";                                        // local preview only: show the site as this account
+  const SIGNED_IN = ck("ll_in") === "1" || !!PV, MEMBER = !!window.MEMBER || PV === "owner" || PV === "member";   // MEMBER: /api/members.js loaded the full picks
+  const OWNER = ck("ll_o") === "1" || PV === "owner";                   // Whop's own team: full picks, no Discord role
+  const WHO = PV ? "Preview" : (() => { try { return decodeURIComponent(ck("ll_n") || ""); } catch (e) { return ""; } })();
   const SEALED = [];
   Object.values(D.props || {}).forEach((P) => { P.picks = P.picks.filter((p) => !(p.sealed && SEALED.push(p))); });
   // the account button: Log in; once signed in, Member (or Upgrade) and Log out
@@ -64,6 +65,7 @@ window.LL_BOOT = function () {
   const MK = (D.markets || Object.keys(D.props)).filter((k) => D.props[k] && (SPORT.markets || []).includes(k));
   const href = (file) => file === "index.html" ? "./" : file;
   const MKT = (k) => D.props[k];
+  const bet = (p) => { const P = MKT(p.prop); return P && P.yes ? (p.side === "OVER" ? P.yes_word : "NO " + P.yes_word) : p.side + " " + p.line; };
   const nm = (p) => p.name || p.player;          // full name when known ("Ja'Marr Chase"), else the short one
 
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -72,7 +74,8 @@ window.LL_BOOT = function () {
   const pct = (v, sign = true) => v == null ? "&ndash;" : (sign ? sgn(v) : "") + v.toFixed(1) + "%";
   const num = (v, d, sign) => v == null ? "&ndash;" : (sign ? sgn(v) : "") + v.toFixed(d);
   const tone = (v) => v == null || Math.abs(v) < 1e-9 ? "" : v > 0 ? "up" : "down";
-  const wl = (r) => r && r.n ? `${r.W}-${r.L}${r.P ? "-" + r.P : ""}` : "0-0";
+  const wl = (r) => (r && r.n ? `${r.W}-${r.L}${r.P ? "-" + r.P : ""}` : "0-0")
+    + (r && r.box ? `<sup class="boxsrc" title="Includes ${r.box} result${r.box > 1 ? "s" : ""} from tonight's box scores - official at the next grade">*</sup>` : "");
   const SHARP = { agrees: "Sharp agrees", against: "Sharp against", neutral: "Sharp neutral", "no line": "No sharp line" };
   const SEAL = { W: "Win", L: "Loss", P: "Push", VOID: "Void" };
   const sharpChip = (s, atClose) => s ? `<span class="chip ${s === "no line" ? "noline" : s}" title="Where sharp money leans${atClose ? " at the close" : " right now"}">${SHARP[s] || esc(s)}${atClose ? " &middot; close" : ""}</span>` : "";
@@ -98,7 +101,6 @@ window.LL_BOOT = function () {
   }
   syncPhases();
   const byId = Object.fromEntries(allPicks.map((p) => [p.serial, p]));
-  const pageOf = (p) => `${MKT(p.prop).slug}.html`;
   // "I bet this": ticks a visitor makes on the Tools page, kept in this browser only (serial -> 1).  Serials carry the
   // season and week, so a new week starts empty; ticks for picks no longer on the site are dropped.
   const MYBETS = (() => { let m = {}; try { m = JSON.parse(store.get("ll-mybets") || "{}") || {}; } catch (e) {}
@@ -106,16 +108,16 @@ window.LL_BOOT = function () {
   const iBet = (p) => !!MYBETS[p.serial];
   const setBet = (serial, on) => { if (on) MYBETS[serial] = 1; else delete MYBETS[serial]; store.set("ll-mybets", JSON.stringify(MYBETS)); };
   const betMark = (p) => iBet(p) ? `<span class="ibet" title="You marked this as bet on the Tools page">&#10003; Bet</span>` : "";
-  const linkTo = (p) => new URL(`${pageOf(p)}?season=${p.season}&week=${p.week}#${p.serial}`, location.href).href;
+  const linkTo = (p) => new URL(pickUrl(p), location.href).href;           // every pick lives on Results (open to all)
   const byKick = (a, b) => (a.kick_utc || "").localeCompare(b.kick_utc || "") || MK.indexOf(a.prop) - MK.indexOf(b.prop);
   const openNow = allPicks.filter((p) => p.phase !== "final").sort(byKick);
   const seasons = [...new Set(allPicks.map((p) => p.season))].sort((a, b) => b - a);
   const periodsOf = (season, picks = allPicks) => [...new Set(picks.filter((p) => p.season === season).map((p) => p.week))].sort((a, b) => b - a);
 
-  /* ------------------------------------------------------------------ navigation (built from the markets)
-     Three kinds of page, kept apart: the places you go each week (This week, Open, Results, Parlays) as tabs; the
-     records (one per market, plus closing line value) under one Records menu; How it works on the right.  Phones
-     get the places as a bottom tab bar, the rest under More. */
+  /* ------------------------------------------------------------------ navigation
+     The places you go each week as tabs: This week, Results (the whole record: every prop, closing line value, every
+     week), Parlays, Tools.  Phones: those as the bottom tab bar, How it works / account / follow under More; laptops:
+     a menu down the left side with every tool listed.  Every prop is one switch away - never a page of its own. */
   const F = SPORT.files || {};
   const keep = SPORT === SPORTS[0] ? "" : `?sport=${SPORT.key}`;
   const ICON = {
@@ -132,7 +134,6 @@ window.LL_BOOT = function () {
     ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["results", F.results, "Results", "results"],
        ...(F.parlays ? [["parlays", F.parlays, "Parlays", "parlays"]] : []), ["tools", `tools.html${keep}`, "Tools", "tools"]]
     : [["soon", href(F.home), "Overview", "week"]];
-  const records = [...MK.map((k) => [`m:${k}`, `${MKT(k).slug}.html`, MKT(k).label]), ["clv", `clv.html${keep}`, "Closing line value"]];
   const how = ["method", `method.html${keep}`, "About & how it works"];
   const follow = [...(D.discord ? [[esc(D.discord), "Discord alerts", "discord"]] : []), ...(D.x ? [[`https://x.com/${esc(D.x)}`, `X &middot; @${esc(D.x)}`, "x"]] : [])];
   const fl = (cls) => follow.map(([link, label, k]) => `<a class="${cls}" href="${link}" target="_blank" rel="noopener" aria-label="${label.replace(/&middot;/, "-")}">${brand(k)}<span>${label}</span></a>`).join("");
@@ -141,20 +142,16 @@ window.LL_BOOT = function () {
   const openBadge = (id) => id === "home" ? `<span class="badge" data-open-count hidden></span>` : "";
   const sportSwitch = SPORTS.length < 2 ? "" : `<div class="sports" role="group" aria-label="Sport">${SPORTS.map((s) =>
     `<a href="${href(s.files.home)}"${s.key === SPORT.key ? ' aria-current="true"' : ""}>${esc(s.name)}${(s.markets || []).length ? "" : "<small>soon</small>"}</a>`).join("")}</div>`;
-  const inRecords = records.some(([id]) => id === here);
-  $("tabs").innerHTML = sportSwitch + places.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}${openBadge(id)}</a>`).join("")
-    + `<details class="navmenu"><summary${inRecords ? ' aria-current="page"' : ""}>Records<i aria-hidden="true"></i></summary><div class="navpop">
-        ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}</a>`).join("")}
-        <a class="how-in-menu" href="${how[1]}"${cur(how[0])}>${how[2]}</a>${fl("fl-menu")}</div></details>`;
+  const inMore = here === "method" || here === "clv";
+  $("tabs").innerHTML = sportSwitch + places.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}${openBadge(id)}</a>`).join("");
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<span class="social">${fl("soc")}</span>${account("navlogin")}`);
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
-  // phones: the places as a bottom tab bar, everything else in the More sheet
-  const tabsFit = places;                                                  // This week, Results, Parlays, Tools + More
-  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${tabsFit.map(([id, link, label, ic]) =>
+  // phones: the places as a bottom tab bar, the rest in the More sheet
+  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${places.map(([id, link, label, ic]) =>
       `<a href="${link}"${cur(id)}>${svg(ic)}<span>${esc(id === "home" ? PERIOD : label)}</span>${openBadge(id)}</a>`).join("")}
-      <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inRecords || here === "method" ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
-    <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}<div class="eyebrow">Records</div>
-      ${records.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}<i aria-hidden="true">&rsaquo;</i></a>`).join("")}
+      <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inMore ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
+    <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}
+      <div class="eyebrow">Records</div><a href="clv.html${keep}"${cur("clv")}>Closing line value<i aria-hidden="true">&rsaquo;</i></a>
       ${D.login_url ? `<div class="eyebrow">Account</div>${account("")}` : ""}<div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
   const openCount = openNow.length + sealedOpen().length;
   // desktop and laptop: a menu down the left side, always there (phones keep the top bar and the bottom tabs)
@@ -167,10 +164,10 @@ window.LL_BOOT = function () {
     const toolNow = page === "tools" ? (location.hash.slice(1) || store.get("ll-tool") || "sizing") : "";
     const item = (link, label, icon, on, extra = "") => `<a href="${link}"${on ? ' aria-current="page"' : ""}>${ico(icon)}<span>${label}</span>${extra}</a>`;
     const groups = [
-      ["Picks", [...places.filter(([id]) => id === "home" || id === "parlays").map(([id, link, label, ic]) =>
-        item(link, id === "home" ? `This ${PERIOD.toLowerCase()}` : label, ICON[ic], id === here, id === "home" ? `<span class="badge" data-open-count hidden></span>` : ""))]],
-      ["Record", [places.find(([id]) => id === "results")].filter(Boolean).map(([id, link, label]) => item(link, label, SI_.results, id === here))
-        .concat(records.map(([id, link, label]) => item(link, label.replace("Closing line value", "Closing line value"), id === "clv" ? SI_.clv : SI_.rec, id === here)))],
+      ["Picks", places.filter(([id]) => id === "home" || id === "parlays").map(([id, link, label, ic]) => item(link, id === "home" ? `This ${PERIOD.toLowerCase()}` : label, ICON[ic], id === here,
+        id === "home" ? `<span class="badge" data-open-count hidden></span>` : ""))],
+      ["Record", places.filter(([id]) => id === "results").map(([id, link, label]) => item(link, label, SI_.results, id === here))
+        .concat([item(`clv.html${keep}`, "Closing line value", SI_.clv, here === "clv")])],
       ["Tools", [["sizing", "Bet sizing", SI_.size], ["odds", "Odds", SI_.odds], ["parlay", "Parlay calculator", SI_.calc], ["player", "Player lookup", SI_.player], ["alerts", "Alerts", '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/>']]
         .map(([k, label, icon]) => item(`tools.html${keep}#${k}`, label, icon, toolNow === k))],
       ["About", [item(how[1], how[2], SI_.info, here === how[0])]]];
@@ -178,7 +175,7 @@ window.LL_BOOT = function () {
     document.body.insertAdjacentHTML("afterbegin", `<aside class="side" aria-label="Menu">
       <a class="side-mark" href="${SIGNED_IN ? href(F.home) : "./"}"><i>LL</i>Line Ledger</a>
       ${sportSwitch}
-      <nav>${groups.map(([g, items]) => `<div class="side-g"><div class="side-h">${g}</div>${items.join("")}</div>`).join("")}</nav>
+      <nav>${groups.map(([g, items]) => `<div class="side-g">${g ? `<div class="side-h">${g}</div>` : ""}${items.join("")}</div>`).join("")}</nav>
       <div class="side-foot">${acct}
         <div class="side-row">${follow.map(([link, label, k]) => `<a class="soc" href="${link}" target="_blank" rel="noopener" aria-label="${label.replace(/&middot;/, "-")}">${brand(k)}</a>`).join("")}
           <button type="button" class="soc side-theme" aria-label="Switch light or dark"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button></div></div></aside>`);
@@ -259,9 +256,9 @@ window.LL_BOOT = function () {
   /* ------------------------------------------------------------------ shared state: period, view, search, market */
   const qs = new URLSearchParams(location.search);
   const state = { season: Number(qs.get("season")) || D.season, week: qs.get("week") === "all" ? "all" : Number(qs.get("week")) || null,
-                  view: store.get("ll-view") || "compact", q: "", market: "all" };
+                  view: store.get("ll-view3") || "list", q: "", market: "all" };
   let redraw = () => {};
-  const VIEWS = [["tickets", "Tickets"], ["compact", "Compact"], ["list", "List"]];
+  const VIEWS = [["list", "List"], ["tickets", "Tickets"], ["compact", "Compact"]];
   const viewBar = () => `<div class="seg" role="group" aria-label="View">${VIEWS.map(([v, l]) => `<button type="button" data-view="${v}" aria-pressed="${state.view === v}">${l}</button>`).join("")}</div>`;
   const searchBox = () => `<label class="search"><span class="sr">Search</span><input type="search" id="q" placeholder="Search" value="${esc(state.q)}" autocomplete="off"></label>`;
   const marketSeg = () => MK.length < 2 ? "" : `<div class="seg" role="group" aria-label="Market">${[["all", "All"], ...MK.map((k) => [k, MKT(k).short || MKT(k).label])]
@@ -299,12 +296,14 @@ window.LL_BOOT = function () {
   document.addEventListener("input", (e) => { if (e.target.id === "q") { state.q = e.target.value.trim(); redraw(false); } });
   document.addEventListener("click", (e) => {
     const v = e.target.closest("[data-view]");
-    if (v) { state.view = v.dataset.view; store.set("ll-view", state.view); document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === state.view))); redraw(false); return; }
+    if (v) { state.view = v.dataset.view; store.set("ll-view3", state.view); document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === state.view))); redraw(false); return; }
     const fb = e.target.closest("button[data-f]");
     if (fb) { const k = fb.dataset.f; if (k === "clear") state.f.clear(); else state.f.has(k) ? state.f.delete(k) : state.f.add(k);
       document.querySelectorAll(".fchips").forEach((el) => { el.outerHTML = filterChips(); }); redraw(false); return; }
     const m = e.target.closest("button[data-market]");
-    if (m) { state.market = m.dataset.market; document.querySelectorAll("button[data-market]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.market === state.market))); redraw(false); return; }
+    if (m) { state.market = m.dataset.market; document.querySelectorAll("button[data-market]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.market === state.market)));
+      const bar = m.closest(".pbar"); if (bar && m.scrollIntoView) m.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+      redraw(false); return; }
     const j = e.target.closest(".jump a");
     if (j) { const t = document.querySelector(j.getAttribute("href")); if (t) t.open = true; }
     const row = e.target.closest(".cs-row, .lrow");
@@ -400,6 +399,26 @@ window.LL_BOOT = function () {
     const short = Object.keys(t).filter((nm) => initLast(nm) === initLast(p.name || p.player));
     return short.length === 1 ? t[short[0]] : null;
   };
+  // a pick graded here also counts in its prop's record rows and week (as the next publish would count it)
+  function bumpRecord(p) {
+    const P = MKT(p.prop);
+    if (!P || !P.record) return;
+    const u = p.units || 0;
+    const add = (r) => {
+      if (!r) return;
+      r.n = (r.n || 0) + 1; r[p.result] = (r[p.result] || 0) + 1; if (r.pending) r.pending -= 1;
+      r.units = (r.units || 0) + p.pl; r.roi = 100 * r.units / r.n; r.win = r.W + r.L ? 100 * r.W / (r.W + r.L) : null;
+      if (u) { r.sized = (r.sized || 0) + p.pl * u; r.sized_risked = (r.sized_risked || 0) + u; r.sized_roi = 100 * r.sized / r.sized_risked; }
+      r.box = (r.box || 0) + 1;
+    };
+    const row = (label) => P.record.find((r) => r.label === label);
+    add(row("All picks"));
+    if (row("Live picks")) { if (p.paper) { add(row("Paper picks (tracked, not bet)")); add(P.weeks && P.weeks[`${p.season}-${p.week}`]); return; } add(row("Live picks")); }
+    add(row(p.pre ? "Pre-launch" : "Posted before kickoff"));
+    add(row(SHARP[p.sharp]));
+    add(row(p.side === "OVER" ? "Overs" : "Unders"));
+    add(P.weeks && P.weeks[`${p.season}-${p.week}`]);
+  }
   let boxBusy = false, boxLast = 0;
   async function autoFinal() {
     const due = allPicks.filter((p) => p.phase === "live" && !p.result && p.kick_utc && Date.now() - new Date(p.kick_utc) > 2.5 * 3600e3);
@@ -422,6 +441,7 @@ window.LL_BOOT = function () {
             Object.assign(p, { actual: a, result: res, phase: "final", game_state: "Final", box: true,
                                pl: res === "W" ? dec(p.price) - 1 : res === "L" ? -1 : 0 });
             p.pl_u = p.pl * (p.units || 0);
+            bumpRecord(p);
             moved = true;
           }
         }
@@ -436,7 +456,7 @@ window.LL_BOOT = function () {
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("button.share");
     if (!b) return;
-    const p = byId[b.dataset.serial], url = new URL(`p/${p.serial}.html`, location.href).href, text = `${nm(p)} ${p.side} ${p.line} (${odds(p.price)}) - Line Ledger`;
+    const p = byId[b.dataset.serial], url = new URL(`p/${p.serial}.html`, location.href).href, text = `${nm(p)} ${bet(p)} (${odds(p.price)}) - Line Ledger`;
     try { if (navigator.share) await navigator.share({ title: text, url }); else { await navigator.clipboard.writeText(url); b.textContent = "Copied"; setTimeout(() => (b.textContent = "Share"), 1600); } } catch (err) {}
   });
   function revealHash() {
@@ -551,7 +571,7 @@ window.LL_BOOT = function () {
   function betButton(p, featured) {
     if (p.phase !== "open" || !p.bet_link || !BOOKS_OK[p.book]) return "";
     const what = p.bet_kind === "slip" ? "opens the bet" : p.bet_kind === "event" ? "opens the game" : "opens the book";
-    const tip = `${p.book} ${what}: ${nm(p)} ${MKT(p.prop).short || MKT(p.prop).label} ${p.side} ${p.line}. Nothing is placed for you.`;
+    const tip = `${p.book} ${what}: ${nm(p)} ${MKT(p.prop).short || MKT(p.prop).label} ${bet(p)}. Nothing is placed for you.`;
     return `<a class="${featured ? "fc-bet" : "share betlink"}" href="${esc(p.bet_link)}" target="_blank" rel="noopener noreferrer" title="${esc(tip)}"
       aria-label="Bet on ${esc(p.book)}: ${esc(tip)}"><i class="bkdot ${BOOKS_OK[p.book]}" aria-hidden="true"></i>${featured ? `Bet at ${esc(p.book)}` : `Bet ${BOOKS_OK[p.book].toUpperCase()}`} &nearr;</a>`;
   }
@@ -567,7 +587,7 @@ window.LL_BOOT = function () {
       <div class="t-top">
         <div class="t-meta"><span class="t-game">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></span>${sharpChip(p.sharp, p.sharp_close)}${betMark(p)}</div>
         <div class="t-player">${playerLink(p)}</div>
-        <div class="t-pick"><span><b>${p.side} ${p.line}</b><small>${odds(p.price)} ${esc(p.book)}</small></span>${p.result ? "" : status(p)}</div>
+        <div class="t-pick"><span><b>${bet(p)}</b><small>${odds(p.price)} ${esc(p.book)}</small></span>${p.result ? "" : status(p)}</div>
         ${p.phase === "open" && p.playable_to != null ? `<div class="final">Playable to <b>${odds(p.playable_to)}</b> &middot; <span class="muted">${esc(P.short || P.label)}</span></div>` : ""}        ${final}
         ${p.result ? `<div class="seal ${p.result}" aria-label="${SEAL[p.result]}">${SEAL[p.result]}</div>` : ""}
       </div>
@@ -593,11 +613,11 @@ window.LL_BOOT = function () {
   function stubTicket(p) {
     const P = MKT(p.prop);
     return `<article class="cstub${p.result ? " graded r-" + p.result : ""}" id="${esc(p.serial)}" data-serial="${esc(p.serial)}" style="${band(p)}">
-      <button type="button" class="cs-row" aria-expanded="false" aria-label="${esc(nm(p))} ${p.side} ${p.line}: show the full ticket">
+      <button type="button" class="cs-row" aria-expanded="false" aria-label="${esc(nm(p))} ${bet(p)}: show the full ticket">
         <span class="cs-l">
           <span class="cs-meta">${gameLabel(p)}<span class="cs-mk">${esc(P.short || P.label)}</span>${betMark(p)}</span>
           <span class="cs-player">${esc(nm(p))}</span>
-          <span class="cs-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(abbr(p.book))}</small></span>
+          <span class="cs-pick"><b>${bet(p)}</b> ${odds(p.price)} <small>${esc(abbr(p.book))}</small></span>
         </span>
         <span class="cs-r">${status(p, true)}${CALM_STUBS ? (p.phase === "final" ? clvMini(p) : "") : clvMini(p) + (p.sharp ? `<span class="cs-sharp ${p.sharp === "no line" ? "noline" : p.sharp}" title="${SHARP[p.sharp] || ""}">${p.sharp === "no line" ? "&ndash;" : p.sharp === "agrees" ? "sharp &#10003;" : p.sharp === "against" ? "sharp &#10007;" : "sharp ~"}</span>` : "")}</span>
         <span class="cs-chev" aria-hidden="true"></span>
@@ -610,7 +630,7 @@ window.LL_BOOT = function () {
       return `<tr class="lrow${p.result ? " r-" + p.result : ""}" id="${esc(p.serial)}" data-serial="${esc(p.serial)}" tabindex="0" style="${band(p)}">
         <td class="l-game m-hide"><span class="gteams">${gameLabel(p)}</span></td>
         <td class="l-player">${playerLink(p)}<span class="m-only l-sub gteams">${gameLabel(p)}</span></td><td class="opt">${esc(P.short || P.label)}</td>
-        <td class="mono l-pick">${p.side} ${p.line} <span class="l-px">${odds(p.price)} <span class="muted">${esc(abbr(p.book))}</span></span></td>
+        <td class="mono l-pick">${bet(p)} <span class="l-px">${odds(p.price)} <span class="muted">${esc(abbr(p.book))}</span></span></td>
         <td class="num opt mono">${v ? `${v.line} ${odds(v.price)}` : "&ndash;"}</td><td class="num m-hide">${clvMini(p)}</td>
         <td class="opt">${p.sharp ? (SHARP[p.sharp] || "").replace("Sharp ", "") : ""}</td><td class="l-st">${status(p, true)}<span class="m-only">${clvMini(p)}</span></td></tr>
         <tr class="lexp" hidden><td colspan="8"></td></tr>`; }).join("");
@@ -649,7 +669,7 @@ window.LL_BOOT = function () {
     return `<div class="tote${compact ? " compact" : ""}">${cells.map(([c, b, s, t]) => `<div class="${c}"${t ? ` title="${esc(t)}"` : ""}>${b}<span>${s}</span></div>`).join("")}</div>`;
   }
   const scoreboard = () => `<div class="boards">${MK.map((k) => { const P = MKT(k);
-    return `<a class="sb" href="${P.slug}.html"><div class="sb-h"><span>${esc(P.label)}</span>${P.paper ? `<span class="chip paper">paper</span>` : `<span class="chip rec">the record</span>`}</div>${tote(P.record, P, true)}</a>`; }).join("")}</div>`;
+    return `<a class="sb" href="${resultsUrl(k)}"><div class="sb-h"><span>${esc(P.label)}</span>${P.paper ? `<span class="chip paper">paper</span>` : `<span class="chip rec">the record</span>`}</div>${tote(P.record, P, true)}</a>`; }).join("")}</div>`;
   // under this many picks a number mostly reflects luck: say so next to it
   const EARLY = 50;
   const earlyNote = (n) => n && n < EARLY ? ` <span class="note" title="Fewer than ${EARLY} picks: too early to judge">n=${n}</span>` : "";
@@ -701,13 +721,16 @@ window.LL_BOOT = function () {
   state.fopen = false;
   const FUNNEL = `<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>`;
   // the control bar: period, search, and one Filters button; the view, market and filter chips live in its panel
+  const propBar = () => MK.length < 3 ? "" : `<div class="pbar" role="group" aria-label="Prop">${[["all", "All props"], ...MK.map((k) => [k, MKT(k).short || MKT(k).label])]
+    .map(([k, l]) => { const n = state.pcount ? (k === "all" ? Object.values(state.pcount).reduce((a, b) => a + b, 0) : state.pcount[k] || 0) : null;
+      return `<button type="button" data-market="${k}" aria-pressed="${state.market === k}"${n === 0 ? ' class="empty"' : ""}>${esc(l)}${n != null ? `<b>${n}</b>` : ""}</button>`; }).join("")}</div>`;
   const toolbar = (pick, withMarket = true, panel = "") => `<div class="ctl"><div class="toolbar">${pick}${searchBox()}
       <button type="button" class="fbtn" id="fbtn" aria-expanded="${state.fopen}" aria-controls="fpanel">${FUNNEL}<span>Filters</span><b class="fcount" id="fcount" hidden></b></button></div>
     <div class="fpanel" id="fpanel"${state.fopen ? "" : " hidden"}>
       <div class="fp-row"><span class="fp-l">View</span>${viewBar()}</div>
-      ${withMarket && MK.length > 1 ? `<div class="fp-row"><span class="fp-l">Market</span>${marketSeg()}</div>` : ""}
+      ${withMarket && MK.length > 1 && MK.length < 3 ? `<div class="fp-row"><span class="fp-l">Market</span>${marketSeg()}</div>` : ""}
       ${withMarket ? `<div class="fp-row"><span class="fp-l">Show</span>${filterChips()}</div>` : ""}
-      ${panel ? `<div class="fp-row"><span class="fp-l">Show</span>${panel}</div>` : ""}</div><div id="phtabs-slot"></div></div>`;
+      ${panel ? `<div class="fp-row"><span class="fp-l">Show</span>${panel}</div>` : ""}</div>${withMarket ? propBar() : ""}<div id="phtabs-slot"></div></div>`;
   function filterCount() {
     const b = $("fcount"), panel = $("fpanel");
     if (!b || !panel || !panel.querySelectorAll) return;
@@ -724,9 +747,9 @@ window.LL_BOOT = function () {
   /* the moving strip of open picks (home) */
   function miniTicket(p) {
     const P = MKT(p.prop);
-    return `<a class="mt" href="${linkTo(p)}" style="${band(p)}" aria-label="${esc(nm(p))} ${p.side} ${p.line}">
+    return `<a class="mt" href="${linkTo(p)}" style="${band(p)}" aria-label="${esc(nm(p))} ${bet(p)}">
       <span class="m-top"><span class="gteams">${gameLabel(p)}</span>${status(p, true)}</span><span class="m-player">${esc(nm(p))}</span>
-      <span class="m-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(abbr(p.book))} &middot; ${esc(P.short || P.label)}</small></span>
+      <span class="m-pick"><b>${bet(p)}</b> ${odds(p.price)} <small>${esc(abbr(p.book))} &middot; ${esc(P.short || P.label)}</small></span>
       <span class="m-foot">${sharpChip(p.sharp)}${(() => { const v = vsLine(p); return v && !v.stale ? `<span class="m-now ${v.ok === false ? "pass" : "ok"}">now ${odds(v.price)}</span>` : ""; })()}</span></a>`;
   }
   function marquee(list) {
@@ -752,7 +775,7 @@ window.LL_BOOT = function () {
       <div class="fc-h"><span>${p.free ? "Free pick &middot; today" : "Featured &middot; top edge"}</span>${status(p, true)}</div>
       <div class="fc-g">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></div>
       <div class="fc-player">${esc(nm(p))}</div>
-      <div class="fc-pick"><b>${p.side} ${p.line}</b> ${odds(p.price)} <small>${esc(p.book)} &middot; ${esc(P.short || P.label)}</small></div>
+      <div class="fc-pick"><b>${bet(p)}</b> ${odds(p.price)} <small>${esc(p.book)} &middot; ${esc(P.short || P.label)}</small></div>
       <div class="fc-stats"><span>EV <b>${pct(p.ev)}</b></span><span>Win <b>${pct(p.win, false)}</b></span>${p.sharp === "agrees" ? `<span class="fc-sharp">Sharp &#10003;</span>` : ""}</div>
       <div class="fc-f">${betButton(p, true) || "<span>Picked by the numbers, not by hand</span>"}<a href="${linkTo(p).replace(/^.*\//, "")}">Full ticket &rarr;</a></div></aside>`;
   }
@@ -790,7 +813,7 @@ window.LL_BOOT = function () {
     const lo = lo0 - pad, hi = hi0 + pad, x = (i) => (i / (pts.length - 1)) * W, y = (v) => ((hi - v) / (hi - lo)) * H;
     const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
     const cls = run >= 0 ? "up" : "down", id = `rcg-${r.key}`, step = W / (pts.length - 1);
-    const hits = r.graded.map((p, i) => `<rect x="${(x(i + 1) - step / 2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${H}"><title>${esc(nm(p))} ${p.side} ${p.line}: ${p.result} ${num(p.pl_u, 2, true)}u, running ${num(pts[i + 1], 2, true)}u</title></rect>`).join("");
+    const hits = r.graded.map((p, i) => `<rect x="${(x(i + 1) - step / 2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${H}"><title>${esc(nm(p))} ${bet(p)}: ${p.result} ${num(p.pl_u, 2, true)}u, running ${num(pts[i + 1], 2, true)}u</title></rect>`).join("");
     return `<figure class="rc-curve ${cls}"><figcaption>Running units &middot; ${r.graded.length} picks in kickoff order</figcaption>
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Running units over the ${PERIOD.toLowerCase()}: finished ${num(run, 2, true)}u">
         <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" class="g0"/><stop offset="1" class="g1"/></linearGradient></defs>
@@ -826,7 +849,7 @@ window.LL_BOOT = function () {
       </header>
       <div class="rcx-grid${mk.length === 1 ? " one" : ""}">${mk.map(recapMarket).join("")}</div>
       <footer class="rcx-f">
-        ${b ? `<a class="rcx-best" href="${linkTo(b).replace(/^.*\//, "")}"><span class="rcx-star" aria-hidden="true">&#9733;</span><span><em>Best hit</em> <b>${esc(nm(b))}</b> ${b.side} ${b.line} <span class="muted">(${b.price > 0 ? "+" : ""}${b.price})</span> &middot; had <b class="up">${b.actual}</b></span></a>` : "<span></span>"}
+        ${b ? `<a class="rcx-best" href="${linkTo(b).replace(/^.*\//, "")}"><span class="rcx-star" aria-hidden="true">&#9733;</span><span><em>Best hit</em> <b>${esc(nm(b))}</b> ${bet(b)} <span class="muted">(${b.price > 0 ? "+" : ""}${b.price})</span> &middot; had <b class="up">${b.actual}</b></span></a>` : "<span></span>"}
         <a class="rcx-all" href="./?season=${r.season}&week=${r.w}">See every pick &rarr;</a>
       </footer></article>`;
   }
@@ -862,8 +885,9 @@ window.LL_BOOT = function () {
     const parts = {};
     PHASES.forEach(([ph, title, sub]) => {
       const ps = list.filter((p) => p.phase === ph).sort(byKick);
-      const sl = ph === "open" ? sealedOpen().filter((p) => p.season === season && p.week === week) : [];
-      const rec = ph === "final" ? `<div class="phase-rec">${MK.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(periodRec(MKT(k), season, week))}</span>`).join("")}</div>` : "";
+      const sl = ph === "open" ? sealedOpen().filter((p) => p.season === season && p.week === week && (state.market === "all" || p.prop === state.market)) : [];
+      const recKs = MK.filter((k) => (state.market === "all" || k === state.market) && periodRec(MKT(k), season, week));
+      const rec = ph === "final" && recKs.length ? `<div class="phase-rec">${recKs.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(periodRec(MKT(k), season, week))}</span>`).join("")}</div>` : "";
       parts[ph] = { n: ps.length + sl.length, title, sub,
         body: `${rec}${ps.length ? picksBlock(ps) : ""}${sl.length ? sealedBlock(sl) : ""}${ps.length || sl.length ? "" : `<div class="empty">Nothing ${title.toLowerCase()} ${ph === "final" ? "yet this " + PERIOD.toLowerCase() : "right now"}.</div>`}` };
     });
@@ -872,6 +896,9 @@ window.LL_BOOT = function () {
     let cur = state.phaseUser && parts[state.phase] ? state.phase : fromHash || PHASES.map(([ph]) => ph).find((ph) => parts[ph].n) || "open";
     state.phase = cur;
     const P = parts[cur];
+    const none = state.market !== "all" && state.pcount && !state.pcount[state.market];    // this prop: no picks this week
+    if (none) P.body = `<div class="empty nopicks"><b>No ${esc(MKT(state.market).label.toLowerCase())} picks this ${PERIOD.toLowerCase()} yet.</b>
+      The model prices every ${esc(MKT(state.market).label.toLowerCase())} line the books post; none has cleared the bar so far. A pick shows up here the moment one does.</div>`;
     const tabs = `<div class="phtabs" role="tablist" aria-label="Open, live or final">${PHASES.map(([ph, title]) =>
         `<button type="button" role="tab" class="pht pht-${ph}" data-ph="${ph}" aria-selected="${ph === cur}"><span>${title}</span><b class="count">${parts[ph].n}</b></button>`).join("")}</div>`;
     const slot = typeof document !== "undefined" && document.getElementById && document.getElementById("phtabs-slot");
@@ -905,8 +932,8 @@ window.LL_BOOT = function () {
   function home() {
     const wk = allPicks.filter((p) => p.season === D.season && p.week === D.week), sl = sealedOpen().filter((p) => p.season === D.season && p.week === D.week);
     const nOf = (ph) => wk.filter((p) => p.phase === ph).length;
-    const chips = MK.map((k) => { const P = MKT(k), r = (P.record || [])[0] || {};
-      return `<a class="rchip" href="${P.slug}.html"><em>${esc(P.short || P.label)}</em><b>${wl(r)}</b><b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 1, true) + "u" : ""}</b></a>`; }).join("");
+    const chips = MK.filter((k) => ((MKT(k).record || [])[0] || {}).n).map((k) => { const P = MKT(k), r = (P.record || [])[0] || {};
+      return `<a class="rchip" href="${resultsUrl(k)}"><em>${esc(P.short || P.label)}</em><b>${wl(r)}</b><b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 1, true) + "u" : ""}</b></a>`; }).join("");
     if (state.week == null || state.week === "all") state.week = D.week;
     const past = state.season !== D.season || state.week !== D.week;          // opened from Results: an earlier week
     if (past) {
@@ -926,6 +953,10 @@ window.LL_BOOT = function () {
       <section><h2 id="wk-title" class="sr"></h2>
         <div id="tb"></div><div id="phases" class="phases"></div></section>`;
     redraw = (full) => {
+      // how many picks each prop has this week (open, sealed, live, graded) - the counts on the prop bar
+      const wk = allPicks.filter((p) => p.season === state.season && p.week === state.week)
+        .concat(sealedOpen().filter((p) => p.season === state.season && p.week === state.week));
+      state.pcount = Object.fromEntries(MK.map((k) => [k, wk.filter((p) => p.prop === k).length]));
       if (full !== false || !$("tb").firstChild) $("tb").innerHTML = toolbar("");     // no week picker: past weeks open from Results
       $("wk-title").textContent = `${PERIOD} ${state.week ?? "-"}, ${state.season}`;
       const list = allPicks.filter((p) => p.season === state.season && p.week === state.week && matches(p));
@@ -940,75 +971,104 @@ window.LL_BOOT = function () {
   // the Open page became part of This week: old links land on its Open section
   const openPage = () => location.replace(`${href(F.home)}${location.hash || "#ph-open"}`);
 
+  /* Results: the whole public record in one place.  One prop switch at the top ("All props" first); for a prop: its
+     record, units over time, closing line value, a breakdown, and every week - each week opens to its picks.  The
+     old per-prop pages and the closing-line page send their links here. */
+  const resultsUrl = (k, extra = "") => `${F.results}?prop=${encodeURIComponent(k)}${extra}`;
+  const pickUrl = (p) => resultsUrl(p.prop, `&season=${p.season}&week=${p.week}#${p.serial}`);
   function resultsPage() {
-    hero("Results", `${PERIOD} by <em>${PERIOD.toLowerCase()}</em>`, "Every graded " + PERIOD.toLowerCase() + ", at a glance.");
-    const keys = [...new Set(MK.flatMap((k) => Object.keys(MKT(k).weeks)))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-    const prw = {};                                                      // the model's parlays, graded, by week
-    (PR.model || []).filter((x) => x.result).forEach((x) => { (prw[`${x.season}-${x.week}`] ||= []).push(x); });
+    const linked = byId[decodeURIComponent(location.hash.slice(1))];
+    const want = qs.get("prop") || (linked && linked.prop) || store.get("ll-rk");
+    state.market = MK.includes(want) ? want : "all";
+    const withRec = MK.filter((k) => (MKT(k).picks || []).length);
+    hero("Results", `Every pick, <em>graded</em>`, `Stamped before the start, graded at the stamped price, compared with the closing line. Nothing edited, nothing removed.`);
+    const sw = () => `<div class="pbar rbar" role="group" aria-label="Prop">${[["all", "All props"], ...withRec.map((k) => [k, MKT(k).short || MKT(k).label])]
+      .map(([k, l]) => `<button type="button" data-market="${k}" aria-pressed="${state.market === k}">${esc(l)}</button>`).join("")}</div>`;
+    $("app").innerHTML = `<div class="ctl rctl">${sw()}</div><div id="rbody"></div>`;
+    const short = (k) => esc(MKT(k).short || MKT(k).label);
+    const keysOf = (ks) => [...new Set(ks.flatMap((k) => Object.keys(MKT(k).weeks)))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
     const cell = (r) => !r || !(r.W + r.L + (r.P || 0)) ? `<span class="muted">${r && (r.n || r.pending) ? "in progress" : "&ndash;"}</span>`
       : `<b>${wl(r)}</b><b class="${tone(r.sized)}">${num(r.sized || 0, 1, true)}u</b>`;
-    const row = (key) => { const [season, w] = key.split("-"), px = prw[key] || [];
-      const pr = px.length ? `<span class="wr-m"><em>Parlays</em><b>${px.filter((x) => x.result === "W").length}-${px.filter((x) => x.result === "L").length}</b></span>` : "";
-      return `<a class="wkrow" href="${href(F.home)}?season=${season}&week=${w}"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
-        <span class="wr-ms">${MK.map((k) => `<span class="wr-m"><em>${esc(MKT(k).short || MKT(k).label)}</em>${cell(MKT(k).weeks[key])}</span>`).join("")}${pr}</span>
-        <span class="wr-go" aria-hidden="true">&rsaquo;</span></a>`; };
     const SHOW = 4;
-    const weeks = keys.length ? `<div class="wkrows">${keys.slice(0, SHOW).map(row).join("")}</div>
-      ${keys.length > SHOW ? `<details class="wk-more"><summary>Show all ${keys.length} ${PERIOD.toLowerCase()}s</summary><div class="wkrows">${keys.slice(SHOW).map(row).join("")}</div></details>` : ""}`
+    const more = (rows, render, label) => rows.length ? `<div class="wkrows">${rows.slice(0, SHOW).map(render).join("")}</div>
+      ${rows.length > SHOW ? `<details class="wk-more"><summary>Show all ${rows.length} ${label}</summary><div class="wkrows">${rows.slice(SHOW).map(render).join("")}</div></details>` : ""}`
       : `<div class="empty">No graded ${PERIOD.toLowerCase()}s yet.</div>`;
-    // the season, one market at a time (a switch, not a wall of cards and charts)
-    const pick = (() => { const s = store.get("ll-mk"); return MK.includes(s) ? s : MK.includes("receptions") ? "receptions" : MK[0]; })();
-    const season = MK.map((k) => { const P = MKT(k);
-      return `<div class="sea-p" data-mk="${k}"${k === pick ? "" : " hidden"}>${tote(P.record, P, true)}${unitsChart(P)}
-        <a class="sea-all" href="${P.slug}.html">Every ${esc(P.short || P.label)} pick &rarr;</a></div>`; }).join("");
-    const r = latestRecap();
-    $("app").innerHTML = `${r ? `<section>${recapCard(r)}</section>` : ""}
-      <section><div class="head"><div><h2>This season</h2></div>
-        ${MK.length > 1 ? `<div class="mk-switch" role="tablist">${MK.map((k) => `<button type="button" role="tab" data-mk="${k}" aria-selected="${k === pick}">${esc(MKT(k).short || MKT(k).label)}</button>`).join("")}</div>` : ""}</div>
-        <div class="season">${season}</div></section>
-      <section><div class="head"><div><h2>Every ${PERIOD.toLowerCase()}</h2></div></div>${weeks}</section>`;
-  }
-  {                                                                   // the season card's market switch
-    document.addEventListener("click", (e) => {
-      const b = e.target.closest(".mk-switch button[data-mk]");
-      if (!b) return;
-      const k = b.dataset.mk;
-      document.querySelectorAll(".mk-switch button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.mk === k)));
-      document.querySelectorAll(".sea-p").forEach((x) => { x.hidden = x.dataset.mk !== k; });
-      store.set("ll-mk", k);
-    });
-  }
 
-  function marketPage(key) {
-    const P = MKT(key);
-    if (!P) { $("app").innerHTML = `<div class="empty">Nothing here yet.</div>`; return; }
-    hero(`${P.paper ? "Research desk &middot; paper picks" : "The record"} &middot; since ${D.since}`, esc(P.label), `Every pick since ${esc(D.since)}, graded at the close.`, tote(P.record, P));
-    const linked = byId[decodeURIComponent(location.hash.slice(1))];
-    if (linked && linked.prop === key) { state.season = linked.season; state.week = linked.week; }
-    if (state.week == null) state.week = "all";
-    state.market = key;
-    const filters = [["all", "All", () => true], ["open", "Open", (p) => p.phase === "open"], ["live", "Live", (p) => p.phase === "live"], ["W", "Won", (p) => p.result === "W"], ["L", "Lost", (p) => p.result === "L"],
-      ["agrees", "Sharp agrees", (p) => p.sharp === "agrees"], ["against", "Sharp against", (p) => p.sharp === "against"]];
-    let active = "all";
-    $("app").innerHTML = `
-      <section><div class="head"><div><h2>Record</h2></div></div>${recordTable(P.record)}${unitsChart(P)}
-        ${P.record.some((r) => r.label === "Pre-launch") ? `<p class="note"><span class="chip pre">pre-launch</span> picks were made by the same model and time-stamped in our private ledger, but not posted publicly before the start. From ${esc(D.launch)} on, every pick is posted before the start.</p>` : ""}</section>
-      <section><div class="head"><div><h2>Every pick</h2></div></div><div id="tb"></div><div id="picks" class="weekgroups"></div></section>`;
-    document.addEventListener("click", (e) => { const b = e.target.closest("#chips button[data-k]"); if (b) { active = b.dataset.k; redraw(false); } });
-    redraw = (full) => {
-      if (full !== false || !$("pk-period")) $("tb").innerHTML = toolbar(pickers(P.picks, true), false, `<div class="filters" id="chips" role="group" aria-label="Show"></div>`);
-      const scope = P.picks.filter((p) => p.season === state.season && (state.week === "all" || p.week === state.week) && matches(p));
-      const f = filters.find((x) => x[0] === active)[2], shown = scope.filter(f);
-      $("chips").innerHTML = filters.filter(([k, , g]) => k === "all" || scope.some(g)).map(([k, l, g]) => `<button type="button" data-k="${k}" aria-pressed="${k === active}">${l}<span>${scope.filter(g).length}</span></button>`).join("");
-      const ws = [...new Set(shown.map((p) => p.week))].sort((a, b) => b - a);
-      $("picks").innerHTML = ws.length ? ws.map((w) => `<div class="weekgroup"><div class="weekhead"><h3>${PERIOD} ${w} <span class="muted">${state.season}</span></h3><span class="mono">${recLine(periodRec(P, state.season, w))}</span></div>${picksBlock(shown.filter((p) => p.week === w).sort(byKick), false)}</div>`).join("")
-        : `<div class="empty">No picks match.</div>`;
-      afterDraw();
+    function overview() {
+      const prw = {};
+      (PR.model || []).filter((x) => x.result).forEach((x) => { (prw[`${x.season}-${x.week}`] ||= []).push(x); });
+      const byProp = withRec.map((k) => { const P = MKT(k), r = (P.record || [])[0] || {};
+        return `<button type="button" class="rp-row" data-market="${k}"><span class="rp-n">${esc(P.label)}${P.paper ? ` <span class="chip paper">paper</span>` : ""}</span>
+          <span class="rp-c"><b>${wl(r)}</b><small>record</small></span><span class="rp-c"><b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 1, true) + "u" : "&ndash;"}</b><small>units</small></span>
+          <span class="rp-c opt"><b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b><small>vs close</small></span><span class="wr-go" aria-hidden="true">&rsaquo;</span></button>`; }).join("");
+      const row = (key) => { const [season, w] = key.split("-"), px = prw[key] || [];
+        const ks = withRec.filter((k) => { const r = MKT(k).weeks[key]; return r && (r.n || r.pending); });
+        const pr = px.length ? `<span class="wr-m"><em>Parlays</em><b>${px.filter((x) => x.result === "W").length}-${px.filter((x) => x.result === "L").length}</b></span>` : "";
+        return `<div class="wkrow"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
+          <span class="wr-ms">${ks.map((k) => `<button type="button" class="wr-m" data-market="${k}"><em>${short(k)}</em>${cell(MKT(k).weeks[key])}</button>`).join("")}${pr}</span></div>`; };
+      const r = latestRecap();
+      return `${r ? `<section>${recapCard(r)}</section>` : ""}
+        <section><div class="head"><div><h2>By prop</h2></div></div><div class="rprops">${byProp || `<div class="empty">No picks yet.</div>`}</div></section>
+        <section><div class="head"><div><h2>Every ${PERIOD.toLowerCase()}</h2></div></div>${more(keysOf(withRec), row, PERIOD.toLowerCase() + "s")}</section>`;
+    }
+
+    function one(k) {
+      const P = MKT(k);
+      const g = recordPicks(P).filter((p) => p.clv_ev != null).sort((a, b) => (a.serial < b.serial ? -1 : 1));
+      let s = 0; const run = g.map((p, i) => (s += p.clv_ev) / (i + 1));
+      const clvChart = lineChart(run, `Value vs close <span class="muted">running average, ${g.length} picks</span>`, run[run.length - 1], (v) => pct(v));
+      const best = g.slice().sort((a, b) => b.clv_ev - a.clv_ev);
+      const mini = (p) => `<a class="mini" href="#${p.serial}" data-goto="${p.serial}"><span><b>${esc(nm(p))}</b> ${bet(p)} <span class="muted">${odds(p.price)} &middot; ${PERIOD.toLowerCase()} ${p.week}</span></span><span class="mono ${tone(p.clv_ev)}">${pct(p.clv_ev)}</span></a>`;
+      const wk = (key) => { const [season, w] = key.split("-").map(Number);
+        const ps = P.picks.filter((p) => p.season === season && p.week === w).sort(byKick);
+        return `<details class="rweek" data-key="${key}"><summary class="wkrow"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
+          <span class="wr-ms"><span class="wr-m"><em>${ps.length} pick${ps.length === 1 ? "" : "s"}</em>${cell(P.weeks[key])}</span>${P.weeks[key] && P.weeks[key].clv_ev != null ? `<span class="wr-m opt"><em>vs close</em><b class="${tone(P.weeks[key].clv_ev)}">${pct(P.weeks[key].clv_ev)}</b></span>` : ""}</span>
+          <span class="wr-go" aria-hidden="true">&rsaquo;</span></summary><div class="rw-picks" data-fill="${key}"></div></details>`; };
+      const keys = keysOf([k]);
+      return `<section class="rhead"><div class="head"><div><div class="eyebrow">${P.paper ? "Paper picks &middot; tracked, not bet" : `The record &middot; since ${esc(P.since || D.since)}`}</div><h2>${esc(P.label)}</h2></div></div>
+          ${tote(P.record, P, true)}${unitsChart(P)}</section>
+        <section id="clv"><div class="head"><div><h2>Closing line value</h2></div></div>
+          <p class="lede">Did the pick get a better number than the market's final price? Over time this is the best sign an edge is real. <a href="method.html">What this means</a></p>
+          ${clvChart || `<div class="empty">Shows up once enough picks have closed.</div>`}</section>
+        <section><div class="head"><div><h2>Every ${PERIOD.toLowerCase()}</h2></div></div><p class="lede">Tap a ${PERIOD.toLowerCase()} to see its picks.</p>
+          ${keys.length ? `<div class="wkrows">${keys.map(wk).join("")}</div>` : `<div class="empty">No picks yet.</div>`}</section>
+        <section><details class="rmore"><summary>Breakdown <span class="muted">splits, Sharp label, best and worst closes</span></summary>
+          ${recordTable(P.record)}
+          ${P.record.some((r) => r.label === "Pre-launch") ? `<p class="note"><span class="chip pre">pre-launch</span> picks were made by the same model and time-stamped in our private ledger, but not posted publicly before the start. From ${esc(D.launch)} on, every pick is posted before the start.</p>` : ""}
+          ${best.length >= 6 ? `<div class="minis"><div><h3>Best closes</h3>${best.slice(0, 5).map(mini).join("")}</div><div><h3>Worst closes</h3>${best.slice(-5).reverse().map(mini).join("")}</div></div>` : ""}
+</details></section>`;
+    }
+
+    const fill = (det) => { const slot = det.querySelector(".rw-picks");
+      if (slot.dataset.done) return; const [season, w] = det.dataset.key.split("-").map(Number);
+      const ps = MKT(state.market).picks.filter((p) => p.season === season && p.week === w).sort(byKick);
+      slot.innerHTML = picksBlock(ps); slot.dataset.done = "1"; afterDraw(); };
+    const open = (serial) => { const p = byId[serial]; if (!p) return;
+      const det = document.querySelector(`.rweek[data-key="${p.season}-${p.week}"]`); if (!det) return;
+      det.open = true; fill(det); revealHash(); };
+    redraw = () => {
+      store.set("ll-rk", state.market);
+      document.querySelectorAll(".rbar button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.market === state.market)));
+      const u = new URL(location.href); u.searchParams.delete("season"); u.searchParams.delete("week");
+      if (state.market === "all") u.searchParams.delete("prop"); else u.searchParams.set("prop", state.market);
+      if (linked && linked.prop !== state.market) u.hash = "";
+      history.replaceState(null, "", u);
+      $("rbody").innerHTML = state.market === "all" ? overview() : one(state.market);
+      afterDraw(); countUp();
+      if (linked && linked.prop === state.market) open(linked.serial);
+      else if (location.hash === "#clv") { const c = $("clv"); if (c) c.scrollIntoView(); }
     };
-    redraw(true); revealHash();
+    document.addEventListener("toggle", (e) => { const d = e.target; if (d.classList && d.classList.contains("rweek") && d.open) fill(d); }, true);
+    document.addEventListener("click", (e) => { const a = e.target.closest("[data-goto]"); if (!a) return;
+      e.preventDefault(); history.replaceState(null, "", `#${a.dataset.goto}`); open(a.dataset.goto); });
+    redraw();
   }
-
-  function clvPage() {
+  // the old pages: one per prop, closing line value - their links (shared tickets, bookmarks) land on Results
+  function marketPage(key) {
+    const q = new URLSearchParams(location.search), extra = ["season", "week"].filter((x) => q.get(x)).map((x) => `&${x}=${q.get(x)}`).join("");
+    location.replace(resultsUrl(key, extra + location.hash));
+  }
+  function clvPage() {             // the scoreboard: every prop's closing line value on one page
     hero("The scoreboard", "Closing line <em>value</em>", "Did we get a better number than the market's final price? <a href=\"method.html\">What this means</a>");
     if (!MK.length) { $("app").innerHTML = `<div class="empty">No ${esc(SPORT.name)} picks have closed yet. Closing line value shows up here once they do.</div>`; return; }
     const cards = MK.map((k) => { const P = MKT(k), r = P.record[0] || {};
@@ -1027,13 +1087,14 @@ window.LL_BOOT = function () {
     const row = (label, r, P) => `<tr><td>${label}</td><td class="num opt">${r.n_clv || 0}</td><td class="num key ${tone(r.clv_ev)}">${pct(r.clv_ev)}</td><td class="num ${beatTone(r.beat)}">${r.beat == null ? "&ndash;" : r.beat.toFixed(0) + "%"}</td><td class="num opt ${tone(r.clv)}">${r.clv == null ? "&ndash;" : sgn(r.clv) + r.clv.toFixed(1) + " " + P.unit}</td></tr>`;
     const table = (rows) => `<div class="tablebox"><table><thead><tr><th>Picks</th><th class="num opt">Closes</th><th class="num key">Value vs close</th><th class="num">Beat close</th><th class="num opt">Avg move</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     const graded = allPicks.filter((p) => p.clv_ev != null).sort((a, b) => b.clv_ev - a.clv_ev);
-    const mini = (p) => `<a class="mini" href="${pageOf(p)}?season=${p.season}&week=${p.week}#${p.serial}"><span><b>${esc(nm(p))}</b> ${p.side} ${p.line} <span class="muted">${odds(p.price)} &middot; ${short(p.prop)} &middot; ${PERIOD.toLowerCase()} ${p.week}</span></span><span class="mono ${tone(p.clv_ev)}">${pct(p.clv_ev)}</span></a>`;
+    const mini = (p) => `<a class="mini" href="${pickUrl(p)}"><span><b>${esc(nm(p))}</b> ${p.side} ${p.line} <span class="muted">${odds(p.price)} &middot; ${short(p.prop)} &middot; ${PERIOD.toLowerCase()} ${p.week}</span></span><span class="mono ${tone(p.clv_ev)}">${pct(p.clv_ev)}</span></a>`;
     $("app").innerHTML = `<section><div class="clvcards">${cards}</div></section>
       ${charts ? `<section><div><div class="eyebrow">Is the edge holding?</div><h2>Over time</h2></div><p class="lede">The running average of value vs close, pick by pick. Early on it swings; what matters is where it settles.</p><div class="charts">${charts}</div></section>` : ""}
       <section><div><div class="eyebrow">${PERIOD} by ${PERIOD.toLowerCase()}</div><h2>By ${PERIOD.toLowerCase()}</h2></div>${table(byWeek.map(({ k, key, r }) => row(`${PERIOD} ${key.split("-")[1]} <span class="muted">${key.split("-")[0]} &middot; ${short(k)}</span>`, r, MKT(k))).join(""))}</section>
       ${bySharp.length ? `<section><div><div class="eyebrow">Model + sharp money</div><h2>By Sharp label</h2></div><p class="lede">Did the picks the sharp money finished on do better at the close?</p>${table(bySharp.map(({ k, r }) => row(`${esc(r.label)} <span class="muted">${short(k)}</span>`, r, MKT(k))).join(""))}</section>` : ""}
       ${graded.length ? `<section><div><div class="eyebrow">Tap one to see its ticket</div><h2>Best and worst closes</h2></div><div class="minis"><div><h3>Best</h3>${graded.slice(0, 5).map(mini).join("")}</div><div><h3>Worst</h3>${graded.slice(-5).reverse().map(mini).join("")}</div></div></section>` : ""}`;
   }
+
 
   function playerPage() {
     const id = new URLSearchParams(location.search).get("id");
@@ -1136,7 +1197,7 @@ window.LL_BOOT = function () {
       if (l.sealed) return `<li class="pc-leg sealed"><span class="pc-n">${i + 1}</span><span class="pc-who"><b class="pc-blur">Sealed leg</b><small>${LOCK} revealed at kickoff</small></span><span class="pc-px"></span></li>`;
       const p = byId[l.serial];
       return `<li class="pc-leg ${l.result || ""}"><span class="pc-n">${l.result ? RES[l.result] : i + 1}</span>
-        <a class="pc-who" href="${p ? pageOf(p) + "?season=" + x.season + "&week=" + x.week + "#" + l.serial : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><small>${l.side} ${l.line} ${short(l.prop)}</small></a>
+        <a class="pc-who" href="${p ? pickUrl(p) : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><small>${bet(l)} ${short(l.prop)}</small></a>
         <span class="pc-px">${odds(l.price)}${l.actual != null ? `<small>had ${l.actual}</small>` : ""}</span></li>`; }).join("");
     const m = x.model_chance || 0, bkc = x.book_chance || 0, edge = m - bkc;
     return `<article class="pc ${bk}${big ? " big" : ""}${on ? " on" : ""}${x.result ? " done res-" + x.result : ""}" data-bk="${bk}">${head}
@@ -1210,7 +1271,7 @@ window.LL_BOOT = function () {
   const TOOLS = [["sizing", "Bet sizing", "What a pick's units mean in dollars, for your bankroll."],
                  ["odds", "Odds", "What any price means: win chance, payout, and the fair price without the book's cut."],
                  ["parlay", "Parlay", "What a parlay pays and how often one like it hits."],
-                 ["player", "Player lookup", "How often a receiver went over a line this season, game by game."],
+                 ["player", "Player lookup", "How often any player went over a line this season, game by game, for any prop."],
                  ["alerts", "Alerts", "Get every pick the moment it's made, on your phone."]];
 
   // Tools > Alerts: how to follow, shaped by who's looking (member / free account / visitor)
@@ -1235,8 +1296,17 @@ window.LL_BOOT = function () {
   function toolsPage() {
     hero("Free tools", "Bettor's <em>toolkit</em>", "Nothing you type here leaves your browser.");
     // betting Sharp agrees only means fewer picks a week, so each unit can be bigger for the same weekly risk
-    const typAll = typicalWeek(), typSharp = typicalWeek((p) => p.sharp === "agrees");
-    const typNow = () => sharpOnly() && typSharp && typSharp.units > 0 ? typSharp : typAll;
+    // the props you bet (remembered in this browser; default: every prop on the site)
+    const sizable = MK.filter((k) => MKT(k).picks.length);
+    const myProps = () => { let m = null; try { m = JSON.parse(store.get("ll-myprops") || "null"); } catch (e) {}
+      const s = Array.isArray(m) ? m.filter((k) => sizable.includes(k)) : []; return s.length ? s : sizable; };
+    const mine = (p) => myProps().includes(p.prop);
+    const typAllOf = () => typicalWeek(mine), typSharpOf = () => typicalWeek((p) => mine(p) && p.sharp === "agrees");
+    let typAll = typAllOf(), typSharp = typSharpOf();
+    const typNow = () => { typAll = typAllOf(); typSharp = typSharpOf(); return sharpOnly() && typSharp && typSharp.units > 0 ? typSharp : typAll; };
+    const propChips = () => sizable.length < 2 ? "" : `<div class="tprops-row"><div class="tp-h"><span class="lk-l">Props you bet</span><small class="tnote">Your unit and this week's list count only these.</small></div>
+      <div class="lk-chips" id="s-props" role="group" aria-label="Props you bet">${sizable.map((k) =>
+      `<button type="button" data-myprop="${k}" aria-pressed="${myProps().includes(k)}"><i aria-hidden="true"></i>${esc(MKT(k).short || MKT(k).label)}</button>`).join("")}</div></div>`;
     const bank0 = parseFloat(store.get("ll-bank")) || 1000, share0 = parseFloat(store.get("ll-share")) || 25;
     const q0 = new URLSearchParams(location.search), h0 = location.hash.slice(1);
     const first = q0.get("player") ? "player" : TOOLS.some(([k]) => k === h0) ? h0 : TOOLS.some(([k]) => k === store.get("ll-tool")) ? store.get("ll-tool") : "sizing";
@@ -1246,7 +1316,7 @@ window.LL_BOOT = function () {
         <div class="tool tgrid">
           <div class="tin">${field("s-bank", "Your bankroll ($)", bank0)}
             <div class="tf"><span>A typical week risks</span><div class="tseg" id="s-share" role="group" aria-label="A typical week risks">${[10, 15, 25, 35].map((v) => `<button type="button" data-share="${v}" aria-pressed="${v === share0}">${v}%</button>`).join("")}</div><small class="tnote">25% is what we use</small></div></div>
-          <div class="tout" id="s-out"></div></div>
+          <div class="tout" id="s-out"></div>${propChips()}</div>
         <div id="s-picks"></div>
         <details class="thow"><summary>How is this worked out?</summary><p id="s-how"></p></details></div>
       <div id="t-odds" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[1][2]}</p>
@@ -1265,7 +1335,7 @@ window.LL_BOOT = function () {
         <div class="tool"><div class="trow">
           <div class="tf grow tcombo"><span id="l-ql">Player</span><input id="l-q" role="combobox" aria-labelledby="l-ql" aria-expanded="false" aria-controls="l-list" aria-autocomplete="list" placeholder="Search a receiver, e.g. Chase" autocomplete="off" spellcheck="false"><ul id="l-list" class="tlist" role="listbox" hidden></ul></div>
           <div class="tf tline"><span>Line</span><div class="tstep"><button type="button" data-ls="-1" aria-label="Lower line">&minus;</button><input id="l-line" inputmode="decimal" value="4.5" aria-label="Line"><button type="button" data-ls="1" aria-label="Raise line">+</button></div></div></div>
-          <div id="l-ours"></div><div id="l-out"><div class="empty">Loading players&hellip;</div></div></div></div>
+          <div class="lk-stats" id="l-stats" hidden></div><div id="l-ours"></div><div id="l-out"><div class="empty">Loading players&hellip;</div></div></div></div>
       <div id="t-alerts" class="tpanel" role="tabpanel" hidden><p class="tsub">${TOOLS[4][2]}</p>${alertsPanel()}</div></section>`;
     const show = (k, push) => {
       document.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tool === k)));
@@ -1283,9 +1353,9 @@ window.LL_BOOT = function () {
       store.set("ll-bank", String(bank)); store.set("ll-share", String(share));
       const typ = typNow(), sharp = typ === typSharp && sharpOnly();
       const unit = typ && typ.units > 0 ? bank * share / 100 / typ.units : bank / 100;
-      $("s-out").innerHTML = `<div class="tbig"><small>Your 1 unit${sharp ? " &middot; Sharp agrees only" : ""}</small><b>${money(unit)}</b><span>${(100 * unit / bank).toFixed(2)}% of your bankroll${sharp ? ` &middot; bigger because you're betting about ${typ.picks} picks a week instead of ${typAll.picks}` : ""}</span></div>
+      $("s-out").innerHTML = `<div class="tbig"><small>Your 1 unit${sharp ? " &middot; Sharp agrees only" : ""}</small><b>${money(unit)}</b><span>${(100 * unit / bank).toFixed(2)}% of your bankroll${myProps().length < sizable.length ? ` &middot; ${myProps().map((k) => esc(MKT(k).short || MKT(k).label)).join(", ")}` : ""}${sharp ? ` &middot; bigger because you're betting about ${typ.picks} picks a week instead of ${typAll.picks}` : ""}</span></div>
         <dl class="ps-nums tsizes">${[0.5, 1, 1.5, 2].map((u) => `<div><dt>${u}u bet</dt><dd>${money(roundStake(u * unit))}</dd></div>`).join("")}</dl>`;
-      $("s-how").innerHTML = typ ? `A typical week of ${sharp ? "our Sharp-agrees picks" : "our picks"} adds up to about <b>${typ.units.toFixed(0)}u</b> over about ${typ.picks} picks (the last ${typ.weeks} finished weeks). So 1u = your bankroll &times; the % you chose &divide; ${typ.units.toFixed(0)}, and a typical week of the picks you bet comes to that %.${sharp ? " The same weekly risk spread over fewer bets swings more from week to week." : ""} Each bet is rounded to the nearest 50 cents, at least $1. Line Ledger sizes its own bets this way (on all its picks).`
+      $("s-how").innerHTML = typ ? `A typical week of ${sharp ? "our Sharp-agrees picks" : "our picks"}${myProps().length < sizable.length ? " in the props you bet" : ""} adds up to about <b>${typ.units.toFixed(0)}u</b> over about ${typ.picks} picks (the last ${typ.weeks} finished weeks). So 1u = your bankroll &times; the % you chose &divide; ${typ.units.toFixed(0)}, and a typical week of the picks you bet comes to that %.${sharp ? " The same weekly risk spread over fewer bets swings more from week to week." : ""} Each bet is rounded to the nearest 50 cents, at least $1. Line Ledger sizes its own bets this way (on all its picks).`
         : "1u = 1% of your bankroll until there's a finished week to measure. Each bet is rounded to the nearest 50 cents, at least $1.";
       unitNow = unit; drawPicks();
     };
@@ -1294,7 +1364,7 @@ window.LL_BOOT = function () {
     let unitNow = 0;
     const sharpOnly = () => store.get("ll-sharponly") === "1", hideBet = () => store.get("ll-hidebet") === "1";
     const drawPicks = () => {
-      const all = openNow.filter((p) => p.phase === "open" && p.units);
+      const all = openNow.filter((p) => p.phase === "open" && p.units && mine(p));
       const nSealed = sealedOpen().length;
       const sealedNote = nSealed ? `<p class="sl-note">${LOCK} ${nSealed} more pick${nSealed === 1 ? " is" : "s are"} sealed for members${D.join_url ? ` &middot; <a href="${esc(D.join_url)}">unlock them</a>` : ""}.</p>` : "";
       if (!all.length || !(unitNow > 0)) { $("s-picks").innerHTML = unitNow > 0 ? sealedNote : ""; return; }
@@ -1307,8 +1377,8 @@ window.LL_BOOT = function () {
         <p class="tpk-sum"><b>${done.length} of ${pool.length}</b> bet &middot; ${money(sum(done))} placed &middot; <b>${money(sum(left))}</b> left to bet</p>
         ${rows.length ? `<div class="tablebox"><table class="tpk"><thead><tr><th class="tck" title="Tick it after you place it">Bet</th><th>Pick</th><th class="num opt">Size</th><th class="num">Your bet</th><th class="num opt">To win</th><th></th></tr></thead><tbody>
           ${rows.map((p) => { const st = stake(p), on = iBet(p);
-            return `<tr class="${on ? "isbet" : ""}"><td class="tck"><input type="checkbox" data-mybet="${esc(p.serial)}"${on ? " checked" : ""} aria-label="I bet ${esc(nm(p))} ${p.side} ${p.line}"></td>
-              <td><b>${esc(nm(p))}</b>${p.sharp === "agrees" ? ` <span class="tsh" title="Sharp agrees">sharp &#10003;</span>` : ""}<small>${p.side} ${p.line} ${esc(MKT(p.prop).short || MKT(p.prop).label)} &middot; ${odds(p.price)} ${esc(abbr(p.book))} &middot; ${when(p.kick_utc, p.kick)}</small></td>
+            return `<tr class="${on ? "isbet" : ""}"><td class="tck"><input type="checkbox" data-mybet="${esc(p.serial)}"${on ? " checked" : ""} aria-label="I bet ${esc(nm(p))} ${bet(p)}"></td>
+              <td><b>${esc(nm(p))}</b>${p.sharp === "agrees" ? ` <span class="tsh" title="Sharp agrees">sharp &#10003;</span>` : ""}<small>${bet(p)} ${esc(MKT(p.prop).short || MKT(p.prop).label)} &middot; ${odds(p.price)} ${esc(abbr(p.book))} &middot; ${when(p.kick_utc, p.kick)}</small></td>
               <td class="num opt">${p.units.toFixed(1)}u</td><td class="num"><b>${money(st)}</b></td><td class="num opt">${money(st * (toDec(p.price) - 1))}</td><td class="tbtn">${betButton(p)}</td></tr>`; }).join("")}
           </tbody></table></div>` : `<div class="empty">${pool.length ? "Every pick here is marked as bet." : "No open Sharp-agrees picks right now."}</div>`}
         ${sealedNote}<p class="ps-fine">Tick a pick after you place it. Ticks stay in this browser on this device only (nothing is sent anywhere), and each ${PERIOD.toLowerCase()} starts fresh. Bet buttons open the book; nothing is placed for you.</p>`;
@@ -1317,6 +1387,12 @@ window.LL_BOOT = function () {
     $("s-picks").addEventListener("change", (e) => {
       if (e.target.id === "s-hide") { store.set("ll-hidebet", e.target.checked ? "1" : "0"); drawPicks(); return; }
       const s = e.target.dataset.mybet; if (s) { setBet(s, e.target.checked); drawPicks(); } });
+    const sp = $("s-props");
+    if (sp) sp.addEventListener("click", (e) => { const b = e.target.closest("[data-myprop]"); if (!b) return;
+      const cur = new Set(myProps()); cur.has(b.dataset.myprop) ? cur.delete(b.dataset.myprop) : cur.add(b.dataset.myprop);
+      if (!cur.size) return;                                               // at least one prop
+      store.set("ll-myprops", JSON.stringify([...cur]));
+      sp.querySelectorAll("[data-myprop]").forEach((x) => x.setAttribute("aria-pressed", String(cur.has(x.dataset.myprop)))); sizeOut(); });
     $("s-bank").addEventListener("input", sizeOut); $("s-share").addEventListener("click", (e) => { const b = e.target.closest("[data-share]"); if (!b) return;
       $("s-share").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); sizeOut(); });
     sizeOut();
@@ -1366,70 +1442,100 @@ window.LL_BOOT = function () {
     document.body.appendChild(sc);
   }
 
+  // Tools > Player lookup: any QB, RB, WR or TE, any stat a prop is graded on, game by game against a line you set
+  const LK = {
+    receptions: ["Receptions", "receptions", "catches", "targets", "targets", 1],
+    receiving_yards: ["Rec yds", "rec_yds", "rec yds", "receptions", "catches", 5],
+    rush_rec_yards: ["Rush + rec yds", "rush_rec_yds", "yds", "rush_att", "carries", 5],
+    rushing_yards: ["Rush yds", "rush_yds", "rush yds", "rush_att", "carries", 5],
+    rush_attempts: ["Rush att", "rush_att", "carries", "rush_yds", "rush yds", 1],
+    passing_yards: ["Pass yds", "pass_yds", "pass yds", "pass_att", "attempts", 5],
+    pass_attempts: ["Pass att", "pass_att", "attempts", "completions", "completions", 1],
+    completions: ["Completions", "completions", "completions", "pass_att", "attempts", 1],
+    pass_tds: ["Pass TDs", "pass_td", "TD passes", "pass_att", "attempts", 1],
+    interceptions: ["INTs", "ints", "INTs", "pass_att", "attempts", 1],
+    anytime_td: ["TDs scored", "td", "TDs", null, null, 1] };
+  const LK_POS = { QB: ["passing_yards", "pass_attempts", "completions", "pass_tds", "interceptions", "rushing_yards", "anytime_td"],
+    RB: ["rushing_yards", "rush_attempts", "rush_rec_yards", "receptions", "receiving_yards", "anytime_td"],
+    WR: ["receptions", "receiving_yards", "rush_rec_yards", "anytime_td"], TE: ["receptions", "receiving_yards", "anytime_td"] };
   function lookup(PL) {
     if (!PL || !PL.players.length) { $("l-out").innerHTML = `<div class="empty">No player games yet this season.</div>`; return; }
-    $("l-eyebrow").innerHTML = `Receptions &middot; ${PL.season} &middot; through ${PERIOD} ${PL.through}`;
+    const COLS = PL.cols || ["receptions", "targets"];
+    const at = (row, c) => { const i = COLS.indexOf(c); return i < 0 ? null : row[(PL.cols ? 4 : 3) + i]; };
+    const snap = (row) => PL.cols ? row[3] : row[5];
+    $("l-eyebrow").innerHTML = `${PL.season} &middot; through ${PERIOD} ${PL.through}`;
     const label = (x) => `${x.full} (${x.team} ${x.pos})`;
     const byPid = Object.fromEntries(PL.players.map((x) => [x.id, x]));
-    const ours = (x) => openNow.filter((p) => p.prop === "receptions" && p.pid === x.id && p.phase !== "final");
-    let who = null;
+    const statsFor = (x) => (PL.cols ? LK_POS[x.pos] || LK_POS.WR : ["receptions"]);
+    const ours = (x, k) => openNow.filter((p) => p.pid === x.id && p.phase !== "final" && (!k || p.prop === k));
+    let who = null, stat = null;
     const lineVal = () => { const v = parseFloat($("l-line").value); return isFinite(v) ? v : null; };
+    const defLine = (x, k) => { const mine = ours(x, k); if (mine.length) return mine[0].line;
+      const [, col] = LK[k], vals = x.g.map((g) => at(g, col)), avg = vals.reduce((t, v) => t + v, 0) / Math.max(vals.length, 1);
+      return k === "anytime_td" ? 0.5 : Math.max(0.5, LK[k][5] === 5 ? Math.round(avg / 5) * 5 - 0.5 : Math.round(avg) - 0.5); };
     const draw = () => {
-      if (!who) { $("l-ours").innerHTML = ""; $("l-out").innerHTML = `<div class="empty">Type a player's name and pick him from the list.</div>`; return; }
-      const L = lineVal(), gs = who.g;
+      if (!who) { $("l-stats").hidden = true; $("l-ours").innerHTML = ""; $("l-out").innerHTML = `<div class="empty">Type a player's name and pick him from the list.</div>`; return; }
+      const L = lineVal(), gs = who.g, [sl, col, noun, cc, cn] = LK[stat];
       if (L == null) { $("l-out").innerHTML = `<div class="empty">Enter a line, like 4.5.</div>`; return; }
-      const rate = (g) => { const o = g.filter((x) => x[3] > L).length, u = g.filter((x) => x[3] < L).length; return { o, u, n: g.length }; };
+      const v = (g) => at(g, col);
+      const rate = (g) => { const o = g.filter((x) => v(x) > L).length, u = g.filter((x) => v(x) < L).length; return { o, u, n: g.length }; };
       const cell = (t, g) => { const r = rate(g); return `<div><small>${t}</small><b>${r.n ? Math.round(100 * r.o / r.n) + "%" : "&ndash;"}</b><span class="muted">over in ${r.o} of ${r.n}${r.n - r.o - r.u ? ` &middot; ${r.n - r.o - r.u} push` : ""}</span></div>`; };
-      const avg = (k) => gs.reduce((t, x) => t + x[k], 0) / gs.length;
-      const mine = ours(who);
-      $("l-ours").innerHTML = mine.map((p) => `<a class="tours" href="${linkTo(p)}"><span class="eyebrow">Our pick this ${PERIOD.toLowerCase()}</span><b>${p.side} ${p.line} receptions</b><span class="mono">${odds(p.price)} ${esc(abbr(p.book))}${p.units ? ` &middot; ${p.units.toFixed(1)}u` : ""}</span><i aria-hidden="true">&rsaquo;</i></a>`).join("");
-      // the chart: one bar per game with its count on top, the line drawn across; over the line = accent, else grey
-      const W = 640, H = 210, pad = 24, top = Math.max(L + 1, ...gs.map((x) => x[3])) * 1.15;
+      const avg = (c) => gs.reduce((t, x) => t + at(x, c), 0) / gs.length;
+      const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1);
+      $("l-ours").innerHTML = ours(who).map((p) => `<a class="tours" href="${linkTo(p)}"><span class="eyebrow">Our pick this ${PERIOD.toLowerCase()}</span><b>${bet(p)} ${esc((MKT(p.prop) || {}).short || "")}</b><span class="mono">${odds(p.price)} ${esc(abbr(p.book))}${p.units ? ` &middot; ${p.units.toFixed(1)}u` : ""}</span><i aria-hidden="true">&rsaquo;</i></a>`).join("");
+      const W = 640, H = 210, pad = 24, top = Math.max(L + 1, ...gs.map(v)) * 1.15;
       const step = (W - 2 * pad) / gs.length, bw = Math.min(44, step - 8);
-      const X = (i) => pad + (i + 0.5) * step, Y = (v) => H - 28 - (H - 28 - 16) * v / top;
-      const bars = gs.map((x, i) => { const cls = x[3] > L ? "tb-o" : x[3] < L ? "tb-u" : "tb-p", h = Math.max(2, Y(0) - Y(x[3]));
-        return `<g class="${cls}"><title>${PERIOD} ${x[0]} ${x[2] ? "vs" : "@"} ${x[1]}: ${x[3]} catches on ${x[4]} targets</title>
+      const X = (i) => pad + (i + 0.5) * step, Y = (y) => H - 28 - (H - 28 - 16) * y / top;
+      const bars = gs.map((x, i) => { const cls = v(x) > L ? "tb-o" : v(x) < L ? "tb-u" : "tb-p", h = Math.max(2, Y(0) - Y(v(x)));
+        return `<g class="${cls}"><title>${PERIOD} ${x[0]} ${x[2] ? "vs" : "@"} ${x[1]}: ${fmt(v(x))} ${noun}${cc ? ` (${fmt(at(x, cc))} ${cn})` : ""}</title>
           <rect x="${X(i) - step / 2}" y="0" width="${step}" height="${H}" fill="transparent"/>
-          <rect x="${X(i) - bw / 2}" y="${Y(0) - h}" width="${bw}" height="${h}" rx="4"/><text class="tb-v" x="${X(i)}" y="${Y(0) - h - 6}">${x[3]}</text>
+          <rect x="${X(i) - bw / 2}" y="${Y(0) - h}" width="${bw}" height="${h}" rx="4"/><text class="tb-v" x="${X(i)}" y="${Y(0) - h - 6}">${Math.round(v(x))}</text>
           <text class="tb-x" x="${X(i)}" y="${H - 8}">${x[2] ? "" : "@"}${esc(x[1])}</text></g>`; }).join("");
       const ourPicks = allPicks.filter((p) => p.pid === who.id).length;
-      $("l-out").innerHTML = `<div class="tplayer"><h3>${esc(who.full)}</h3><span class="muted">${esc(who.team)} ${esc(who.pos)} &middot; ${avg(3).toFixed(1)} catches, ${avg(4).toFixed(1)} targets a game</span>
+      const chips = statsFor(who).map((k) => `<button type="button" data-lk="${k}" aria-pressed="${k === stat}">${esc(LK[k][0])}</button>`).join("");
+      const sb = $("l-stats"); sb.hidden = statsFor(who).length < 2;
+      sb.innerHTML = `<span class="lk-l">Stat</span><div class="lk-chips" role="group" aria-label="Stat">${chips}</div>`;
+      $("l-out").innerHTML = `<div class="tplayer"><h3>${esc(who.full)}</h3><span class="muted">${esc(who.team)} ${esc(who.pos)} &middot; ${fmt(+avg(col).toFixed(1))} ${noun}${cc ? `, ${fmt(+avg(cc).toFixed(1))} ${cn}` : ""} a game</span>
           ${ourPicks ? `<a class="tpl-all" href="${playerHref(who.id)}">Every pick we've made on him (${ourPicks}) &rarr;</a>` : ""}</div>
-        <div class="rc-grid">${cell("Last 5", gs.slice(-5))}${cell("Last 10", gs.slice(-10))}${cell("Season", gs)}<div><small>Average</small><b>${avg(3).toFixed(1)}</b><span class="muted">vs line ${L}</span></div></div>
-        <figure class="tchart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Catches per game against the line ${L}">
+        <div class="rc-grid">${cell("Last 5", gs.slice(-5))}${cell("Last 10", gs.slice(-10))}${cell("Season", gs)}<div><small>Average</small><b>${(+avg(col).toFixed(1))}</b><span class="muted">vs line ${L}</span></div></div>
+        <figure class="tchart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(sl)} per game against the line ${L}">
           <line class="tb-base" x1="${pad / 2}" x2="${W - pad / 2}" y1="${Y(0)}" y2="${Y(0)}"/>${bars}
           <line class="tb-line" x1="${pad / 2}" x2="${W - pad / 2}" y1="${Y(L)}" y2="${Y(L)}"/></svg>
           <figcaption><span class="kk"><span class="key l"></span>Line ${L}</span><span class="kk"><span class="key o"></span>Over the line</span><span class="kk"><span class="key u"></span>Under the line</span><span class="kk muted">Tap a bar for the game</span></figcaption></figure>
-        <div class="tablebox"><table><thead><tr><th>${PERIOD}</th><th>Opponent</th><th class="num">Catches</th><th class="num opt">Targets</th><th class="num opt">Snaps</th><th>vs ${L}</th></tr></thead><tbody>
-          ${gs.slice().reverse().map((x) => `<tr><td>${x[0]}</td><td>${x[2] ? "vs" : "@"} ${esc(x[1])}</td><td class="num"><b>${x[3]}</b></td><td class="num opt">${x[4]}</td><td class="num opt">${x[5] == null ? "&ndash;" : x[5] + "%"}</td>
-            <td>${x[3] > L ? '<b class="up">Over</b>' : x[3] < L ? '<span class="muted">Under</span>' : '<span class="muted">Push</span>'}</td></tr>`).join("")}</tbody></table></div>
-        <p class="ps-fine">Past games, not a prediction: injuries, trades and a new quarterback change what a player does. Stats: nflverse.</p>`;
+        <div class="tablebox"><table><thead><tr><th>${PERIOD}</th><th>Opponent</th><th class="num">${esc(sl)}</th>${cc ? `<th class="num opt">${esc(cn[0].toUpperCase() + cn.slice(1))}</th>` : ""}<th class="num opt">Snaps</th><th>vs ${L}</th></tr></thead><tbody>
+          ${gs.slice().reverse().map((x) => `<tr><td>${x[0]}</td><td>${x[2] ? "vs" : "@"} ${esc(x[1])}</td><td class="num"><b>${fmt(v(x))}</b></td>${cc ? `<td class="num opt">${fmt(at(x, cc))}</td>` : ""}<td class="num opt">${snap(x) == null ? "&ndash;" : snap(x) + "%"}</td>
+            <td>${v(x) > L ? '<b class="up">Over</b>' : v(x) < L ? '<span class="muted">Under</span>' : '<span class="muted">Push</span>'}</td></tr>`).join("")}</tbody></table></div>
+        <p class="ps-fine">Past games, not a prediction: injuries, trades and a new quarterback change what a player does. Stats: nflverse play-by-play.</p>`;
     };
-    const setUrl = () => { if (who) history.replaceState(null, "", `?player=${who.id}&line=${encodeURIComponent($("l-line").value)}#player`); };
-    const choose = (x, keepLine) => {
+    const setUrl = () => { if (who) history.replaceState(null, "", `?player=${who.id}&stat=${stat}&line=${encodeURIComponent($("l-line").value)}#player`); };
+    const choose = (x, keepLine, k) => {
       who = x;
-      if (x && !keepLine) { const mine = ours(x); $("l-line").value = mine.length ? mine[0].line : Math.max(0.5, Math.round(x.g.reduce((t, g) => t + g[3], 0) / x.g.length) - 0.5); }
+      if (x) { const mine = ours(x); stat = k && statsFor(x).includes(k) ? k : mine.length && LK[mine[0].prop] && statsFor(x).includes(mine[0].prop) ? mine[0].prop : statsFor(x)[0];
+        if (!keepLine) $("l-line").value = defLine(x, stat); }
       setUrl(); draw();
     };
+    $("l-stats").addEventListener("click", (e) => { const b = e.target.closest("[data-lk]"); if (!b || !who) return;
+      stat = b.dataset.lk; $("l-line").value = defLine(who, stat); setUrl(); draw(); });
     // the search box: every word you type must start a word of the name (or match the team); picks this week first
     const fold = (t) => t.toLowerCase().normalize("NFD").replace(/\p{M}|['.]/gu, "");
-    const words = PL.players.map((x) => ({ x, w: fold(`${x.full} ${x.name}`).split(/[\s-]+/), team: x.team.toLowerCase() }));
-    const picked = new Set(openNow.filter((p) => p.prop === "receptions").map((p) => p.pid));
+    const words = PL.players.map((x) => ({ x, w: fold(`${x.full} ${x.name}`).split(/[\s-]+/), team: x.team.toLowerCase(), pos: x.pos.toLowerCase() }));
+    const picked = new Set(openNow.map((p) => p.pid));
     let hits = [], hi = 0;
     const list = $("l-list"), box = $("l-q");
+    box.placeholder = PL.cols ? "Search any player, e.g. Chase" : box.placeholder;
     const close = () => { list.hidden = true; box.setAttribute("aria-expanded", "false"); box.removeAttribute("aria-activedescendant"); };
     const paint = () => {
       list.innerHTML = hits.length ? hits.map(({ x }, i) => `<li role="option" id="lo-${i}" data-i="${i}" aria-selected="${i === hi}">${tm(x.team)}<b>${esc(x.full)}</b><span class="muted">${esc(x.pos)}</span>
-          ${picked.has(x.id) ? `<em class="tpk">our pick</em>` : ""}<span class="mono muted tct">${x.rec} rec</span></li>`).join("")
-        : `<li class="tnone">No receiver matches. Try a last name.</li>`;
+          ${picked.has(x.id) ? `<em class="tpk">our pick</em>` : ""}<span class="mono muted tct">${x.g.length} games</span></li>`).join("")
+        : `<li class="tnone">No player matches. Try a last name.</li>`;
       list.hidden = false; box.setAttribute("aria-expanded", "true");
       if (hits.length) box.setAttribute("aria-activedescendant", `lo-${hi}`);
     };
     const search = () => {
       const q = fold(box.value).split(/[\s-]+/).filter(Boolean);
       if (!q.length) { close(); return; }
-      hits = words.filter(({ w, team }) => q.every((t) => team === t || w.some((y) => y.startsWith(t))))
-        .sort((a, b) => picked.has(b.x.id) - picked.has(a.x.id) || b.x.rec - a.x.rec).slice(0, 8);
+      hits = words.filter(({ w, team, pos }) => q.every((t) => team === t || pos === t || w.some((y) => y.startsWith(t))))
+        .sort((a, b) => picked.has(b.x.id) - picked.has(a.x.id) || (b.x.vol || b.x.rec || 0) - (a.x.vol || a.x.rec || 0)).slice(0, 8);
       hi = 0; paint();
     };
     const pick = (i) => { const h = hits[i]; if (!h) return; box.value = label(h.x); close(); choose(h.x); box.blur(); };
@@ -1444,10 +1550,11 @@ window.LL_BOOT = function () {
     box.addEventListener("blur", () => setTimeout(close, 120));
     $("l-line").addEventListener("input", () => { setUrl(); draw(); });
     document.querySelector(".tstep").addEventListener("click", (e) => { const b = e.target.closest("[data-ls]"); if (!b) return;
-      $("l-line").value = Math.max(0.5, (lineVal() ?? 4.5) + +b.dataset.ls); setUrl(); draw(); });
+      const st = stat && LK[stat][5] === 5 ? 5 : 1;
+      $("l-line").value = Math.max(0.5, (lineVal() ?? 4.5) + st * +b.dataset.ls); setUrl(); draw(); });
     const q = new URLSearchParams(location.search), start = byPid[q.get("player")];
-    if (start) { $("l-q").value = label(start); if (q.get("line")) $("l-line").value = q.get("line"); choose(start, !!q.get("line")); }
-    else { draw(); if (q.get("player")) $("l-out").innerHTML = `<div class="empty">No receiving games for that player this season yet. Search another name above.</div>`; }
+    if (start) { $("l-q").value = label(start); if (q.get("line")) $("l-line").value = q.get("line"); choose(start, !!q.get("line"), q.get("stat")); }
+    else { draw(); if (q.get("player")) $("l-out").innerHTML = `<div class="empty">No games for that player this season yet. Search another name above.</div>`; }
   }
 
   setTimeout(() => { reveal(); countUp(); }, 0);
@@ -1495,7 +1602,7 @@ window.LL_BOOT = function () {
       <div class="lpa-head">&#128276; ${esc(PERIOD)} ${showWeek} &middot; ${n} new picks</div>
       <div class="lpa-card">${games.map((g) => `<div class="lpa-g">${esc(g)}</div>${ps.filter((p) => matchup(p) === g).map(alertLine).join("")}`).join("")}</div></div>`; };
     const sizeRows = (ps, ticks) => ps.map((p, i) => `<tr${ticks && ticks[i] ? ' class="isbet"' : ""}>${ticks ? `<td class="tck"><input type="checkbox" tabindex="-1"${ticks[i] ? " checked" : ""} aria-hidden="true"></td>` : ""}
-        <td><b>${esc(nm(p))}</b>${p.sharp === "agrees" ? ` <span class="tsh">sharp &#10003;</span>` : ""}<small>${p.side} ${p.line} rec &middot; ${odds(p.price)} ${esc(abbr(p.book))}</small></td>
+        <td><b>${esc(nm(p))}</b>${p.sharp === "agrees" ? ` <span class="tsh">sharp &#10003;</span>` : ""}<small>${bet(p)} rec &middot; ${odds(p.price)} ${esc(abbr(p.book))}</small></td>
         <td class="num">${(p.units || 0).toFixed(1)}u</td><td class="num"><b>${stake(p) != null ? money(stake(p)) : "&ndash;"}</b></td></tr>`).join("");
     const ticks = [1, 1, 0, 1, 0], trk = sample(5), done = trk.filter((p, i) => ticks[i]), left = trk.filter((p, i) => !ticks[i]);
     const sum = (ps) => ps.reduce((t, p) => t + (stake(p) || 0), 0);
@@ -1734,7 +1841,7 @@ window.LL_BOOT = function () {
           <li>Bet sizing, odds and player lookup tools</li></ul>
         <div class="lp-ctas"><a class="lp-btn gold" href="${esc(D.login_url)}?next=${back}">Create a free account</a><a class="lp-btn ghost dark" href="${esc(D.login_url)}?next=${back}">Sign in</a></div>
         <p class="muted">Already paying? Sign in and every pick shows up here. Want them all now? ${D.join_url ? `<a href="${esc(D.join_url)}">Start your ${esc((D.offer || {}).trial || "membership")}</a>.` : ""}</p>
-        <p class="muted">The full record stays open to everyone: <a href="receptions.html">every receptions pick</a>, <a href="${F.results}">results by ${PERIOD.toLowerCase()}</a>.</p>
+        <p class="muted">The full record stays open to everyone: <a href="${F.results}">every pick and every result</a>.</p>
       </div></section>`;
   }
   // one clear line above the page for the moments people get stuck: just joined (connect Discord), Whop still

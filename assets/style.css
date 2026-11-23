@@ -1717,5 +1717,134 @@ a.pc-who:hover b { text-decoration: underline; }
 .pc-lock { white-space: nowrap; }
 @media (max-width: 680px) { .pc-lock { font-size: 10.5px; padding: 6px 8px; } .pc-book { font-size: 18px; } }
 
+/* ==== every prop: the prop bar (This week) and the season switch (Results) scroll inside themselves, never the page ==== */
+.pbar, .mk-switch { display: flex; gap: 6px; max-width: 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain; scroll-padding-inline: 16px; }
+.pbar::-webkit-scrollbar, .mk-switch::-webkit-scrollbar { display: none; }
+.pbar button { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--rule); background: var(--ticket); color: var(--muted); font: 700 13px/1 var(--body); white-space: nowrap; }
+.pbar button b { font: 700 11.5px/1 var(--mono); padding: 3px 6px; border-radius: 999px; background: var(--soft); color: inherit; }
+.pbar button[aria-pressed="true"] { background: var(--board); color: var(--board-text); border-color: var(--board); }
+.pbar button[aria-pressed="true"] b { background: rgba(255, 255, 255, .12); }
+.pbar button.empty { opacity: .55; }
+.mk-switch { flex-wrap: nowrap; }
+.mk-switch button { flex: none; white-space: nowrap; }
+section > .head:has(.mk-switch) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+
+/* ---------------------------------------------------------------- Results: one page for the whole record */
+.rctl { grid-template-columns: minmax(0, 1fr); }
+.rprops { display: grid; gap: 8px; }
+.rp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 18px; width: 100%; text-align: left;
+  padding: 14px 16px; border-radius: 14px; background: var(--ticket); border: 1px solid var(--rule); color: inherit; font: inherit; cursor: pointer;
+  transition: border-color .15s ease, transform .15s ease; }
+.rp-row:hover { border-color: var(--accent); }
+.rp-row:active { transform: scale(.99); }
+.rp-n { font-weight: 700; min-width: 0; }
+.rp-c { display: grid; justify-items: end; gap: 3px; font-family: var(--mono); font-size: 15px; }
+.rp-c small { font: 600 11px/1 var(--body); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+button.wr-m { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; }
+button.wr-m:hover em { color: var(--accent); }
+.rweek { border-radius: 14px; }
+.rweek > summary.wkrow { cursor: pointer; list-style: none; }
+.rweek > summary::-webkit-details-marker { display: none; }
+.rweek > summary .wr-go { transition: transform .15s ease; }
+.rweek[open] > summary { border-color: var(--accent); }
+.rweek[open] > summary .wr-go { transform: rotate(90deg); }
+.rw-picks { padding: 10px 0 6px; }
+.rw-picks:empty { display: none; }
+.rmore > summary { cursor: pointer; list-style: none; padding: 14px 16px; border-radius: 14px; border: 1px dashed var(--rule); font-weight: 700; }
+.rmore > summary::-webkit-details-marker { display: none; }
+.rmore > summary .muted { font-weight: 500; margin-left: 6px; }
+.rmore[open] > summary { margin-bottom: 14px; }
+.rmore .minis { margin-top: 18px; }
+.empty.nopicks b { display: block; color: var(--ink, inherit); margin-bottom: 4px; }
+.ms-in a > span { display: grid; gap: 3px; }
+.ms-in a small { font-size: 12.5px; opacity: .65; font-weight: 500; }
+@media (max-width: 680px) {
+  .rp-row { grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 12px; padding: 12px 14px; }
+  .rp-c.opt { display: none; }
+  .wr-m.opt { display: none; }
+}
+#rbody { display: grid; gap: 52px; min-width: 0; }
+#rbody > section { min-width: 0; }
+@media (max-width: 680px) { #rbody { gap: 40px; } }
+#rbody .tote b { color: inherit; }
+#rbody .tote b.up { color: var(--up); } #rbody .tote b.down { color: var(--down); }
+#rbody .tote span { color: var(--muted); }
+
+/* ---------------------------------------------------------------- This week: the slate board */
+.slate { display: grid; gap: 22px; }
+.sgame { display: grid; gap: 0; border: 1px solid var(--rule); border-radius: 16px; background: var(--ticket); overflow: hidden; }
+.sg-h { display: flex; align-items: center; gap: 12px; padding: 11px 16px; background: var(--soft); border-bottom: 1px solid var(--rule); }
+.sg-t { font: 600 12.5px/1 var(--mono); color: var(--muted); }
+.sg-h .gteams { margin-left: auto; }
+.sg-n { font: 700 11.5px/1 var(--mono); padding: 4px 8px; border-radius: 999px; background: var(--ticket); border: 1px solid var(--rule); color: var(--muted); }
+.slate-rows { display: grid; }
+.slate .srow { border: 0; border-radius: 0; box-shadow: none; background: transparent; border-top: 1px solid var(--rule); }
+.slate .srow:first-child { border-top: 0; }
+.slate .srow::before, .slate .srow::after { display: none; }
+.slate .srow:hover { box-shadow: none; background: color-mix(in srgb, var(--soft) 60%, transparent); }
+.slate .srow { box-shadow: inset 3px 0 0 var(--c1, var(--rule)); }
+.slate .srow.graded.r-W { box-shadow: inset 3px 0 0 var(--up); } .slate .srow.graded.r-L { box-shadow: inset 3px 0 0 var(--down); }
+.sr-b { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto 14px; gap: 14px; padding: 12px 16px 12px 18px; }
+.sr-who, .sr-bet { display: grid; gap: 3px; min-width: 0; }
+.sr-who b { font-weight: 700; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr-who small, .sr-bet small { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr-bet b { font: 700 14.5px/1.2 var(--mono); white-space: nowrap; }
+.sr-r { display: flex; justify-content: flex-end; min-width: 64px; }
+.sr-ev, .sr-res { display: grid; justify-items: end; gap: 3px; }
+.sr-ev b, .sr-res b { font: 700 14.5px/1 var(--mono); }
+.sr-ev small, .sr-res small { font-size: 11.5px; color: var(--muted); }
+.sr-res.r-W b { color: var(--up); } .sr-res.r-L b { color: var(--down); }
+.slate .srow.open { background: transparent; }
+.slate .srow .cs-full { padding: 0 12px 14px; }
+.topedge { display: grid; grid-template-columns: auto minmax(0, 1fr) auto 14px; align-items: center; gap: 14px; margin: 14px 0 12px; padding: 12px 16px;
+  border-radius: 14px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(243, 217, 164, .28); color: #e6ebf3; text-decoration: none; max-width: 760px; }
+.topedge:hover { border-color: var(--board-text); }
+.te-k { font: 700 11px/1 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--board-text); }
+.te-p { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.te-p small { color: #aeb9cc; }
+.te-ev { color: #6fd6a2; font-weight: 700; font-size: 13px; }
+.topedge i { font-style: normal; opacity: .6; font-size: 20px; }
+@media (max-width: 680px) {
+  .sr-b { grid-template-columns: minmax(0, 1fr) auto 12px; gap: 6px 12px; padding: 11px 12px 11px 15px; }
+  .sr-bet { grid-column: 1; grid-row: 2; grid-template-columns: auto auto; justify-content: start; align-items: baseline; gap: 8px; }
+  .sr-r { grid-column: 2; grid-row: 1 / span 2; }
+  .cs-chev { grid-column: 3; grid-row: 1 / span 2; }
+  .sg-h { padding: 10px 12px; }
+  .topedge { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 11px 13px; }
+  .te-k { grid-column: 1 / -1; }
+  .topedge i { display: none; }
+}
+.sg-t { white-space: nowrap; }
+@media (min-width: 900px) { .sr-b { grid-template-columns: minmax(0, 1fr) 210px 96px 14px; } }
+.tprops { flex-wrap: wrap; overflow: visible; }
+.side-acct .acct-who b { color: var(--board-text); }
+@media (max-width: 680px) { .sg-t { font-size: 11.5px; } .sg-h { gap: 8px; } }
+.ms-in .acct-who b { color: var(--board-text); }
+
+/* ---------------------------------------------------------------- tool chips: Stat (player lookup), Props you bet (sizing) */
+.lk-l { font: 600 10.5px/1.2 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.lk-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.lk-chips button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 999px; cursor: pointer;
+  font: 600 13.5px/1 var(--body); color: var(--ink); background: var(--paper); border: 1px solid var(--rule);
+  transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.lk-chips button:hover { border-color: var(--ink); }
+.lk-chips button[aria-pressed="true"] { background: var(--board); color: var(--board-text); border-color: var(--board); }
+.lk-chips button i { display: none; width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid currentColor; position: relative; }
+#s-props button i { display: inline-block; opacity: .55; }
+#s-props button[aria-pressed="true"] i { opacity: 1; background: var(--board-text); border-color: var(--board-text); }
+#s-props button[aria-pressed="true"] i::after { content: ""; position: absolute; left: 4px; top: 1px; width: 3px; height: 7px;
+  border: solid var(--board); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.lk-stats { display: grid; gap: 10px; margin: 18px 0 6px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.lk-stats[hidden] { display: none; }
+.tprops-row { grid-column: 1 / -1; display: grid; gap: 12px; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.tp-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+@media (max-width: 680px) {
+  .lk-chips { gap: 7px; }
+  .lk-chips button { padding: 9px 12px; font-size: 13px; }
+}
+#l-ours { display: grid; gap: 10px; } #l-ours:not(:empty) { margin-bottom: 8px; }
+
 /* a pick graded in the browser from the box score (app.js autoFinal): official at the next grade */
 .pill .boxsrc { font-size: .72em; margin-left: 1px; opacity: .8; }
