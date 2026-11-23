@@ -107,6 +107,7 @@ window.LL_BOOT = function () {
     const onSite = new Set(allPicks.map((p) => p.serial)); Object.keys(m).forEach((k) => { if (!onSite.has(k)) delete m[k]; }); return m; })();
   const iBet = (p) => !!MYBETS[p.serial];
   const setBet = (serial, on) => { if (on) MYBETS[serial] = 1; else delete MYBETS[serial]; store.set("ll-mybets", JSON.stringify(MYBETS)); };
+  const markBet = (p) => `<button type="button" class="markbet" data-markbet="${esc(p.serial)}" aria-pressed="${iBet(p)}" title="Mark it after you place it: My bets (Filters) shows just these. Kept on this device only.">${iBet(p) ? "&#10003; Bet" : "Mark as bet"}</button>`;
   const betMark = (p) => iBet(p) ? `<span class="ibet" title="You marked this as bet on the Tools page">&#10003; Bet</span>` : "";
   const linkTo = (p) => new URL(pickUrl(p), location.href).href;           // every pick lives on Results (open to all)
   const byKick = (a, b) => (a.kick_utc || "").localeCompare(b.kick_utc || "") || MK.indexOf(a.prop) - MK.indexOf(b.prop);
@@ -266,10 +267,11 @@ window.LL_BOOT = function () {
   // filter chips (This week, Open): any chip on narrows the list; chips in the same group widen it again (Overs + Unders)
   const FILTERS = [["over", "Overs", "side", (p) => p.side === "OVER"], ["under", "Unders", "side", (p) => p.side === "UNDER"],
     ["dk", "DraftKings", "book", (p) => p.book === "DraftKings"], ["fd", "FanDuel", "book", (p) => p.book === "FanDuel"],
-    ["agrees", "Sharp agrees", "sharp", (p) => p.sharp === "agrees"]];
+    ["agrees", "Sharp agrees", "sharp", (p) => p.sharp === "agrees"], ["mine", "My bets", "mine", (p) => iBet(p)]];
   state.f = new Set();
+  // "My bets": the picks this visitor marked as bet (on a ticket or the Tools page), kept on this device only
   const filterChips = () => `<div class="filters fchips" role="group" aria-label="Filter">${FILTERS.map(([k, l]) =>
-    `<button type="button" data-f="${k}" aria-pressed="${state.f.has(k)}">${l}</button>`).join("")}${state.f.size ? `<button type="button" data-f="clear" class="fclear">Clear</button>` : ""}</div>`;
+    `<button type="button" data-f="${k}" aria-pressed="${state.f.has(k)}"${k === "mine" ? ' class="fmine" title="Picks you marked as bet on this device"' : ""}>${l}${k === "mine" ? ` <b class="fn">${Object.keys(MYBETS).length}</b>` : ""}</button>`).join("")}${state.f.size ? `<button type="button" data-f="clear" class="fclear">Clear</button>` : ""}</div>`;
   const passesChips = (p) => [...new Set(FILTERS.filter(([k]) => state.f.has(k)).map(([, , g]) => g))]
     .every((g) => FILTERS.some(([k, , gg, f]) => gg === g && state.f.has(k) && f(p)));
   const matches = (p) => {
@@ -297,6 +299,12 @@ window.LL_BOOT = function () {
   document.addEventListener("click", (e) => {
     const v = e.target.closest("[data-view]");
     if (v) { state.view = v.dataset.view; store.set("ll-view3", state.view); document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === state.view))); redraw(false); return; }
+    const mb = e.target.closest("button[data-markbet]");
+    if (mb) { const s = mb.dataset.markbet, on = !iBet(byId[s]); setBet(s, on);
+      if (state.f.has("mine")) { redraw(false); return; }
+      document.querySelectorAll(`[data-markbet="${s}"]`).forEach((b) => { b.setAttribute("aria-pressed", String(on)); b.innerHTML = on ? "&#10003; Bet" : "Mark as bet"; });
+      document.querySelectorAll(`[data-serial="${s}"] .cs-meta, tr[data-serial="${s}"] .l-player`).forEach((el) => { const m = el.querySelector(".ibet"); if (m) m.remove(); if (on) el.insertAdjacentHTML("beforeend", betMark(byId[s])); });
+      document.querySelectorAll(".fchips").forEach((el) => { el.outerHTML = filterChips(); }); return; }
     const fb = e.target.closest("button[data-f]");
     if (fb) { const k = fb.dataset.f; if (k === "clear") state.f.clear(); else state.f.has(k) ? state.f.delete(k) : state.f.add(k);
       document.querySelectorAll(".fchips").forEach((el) => { el.outerHTML = filterChips(); }); redraw(false); return; }
@@ -346,7 +354,7 @@ window.LL_BOOT = function () {
       el.textContent = `${el.dataset.short ? "in" : `${SPORT.event || "starts"} in`} ${d ? d + "d " + h + "h" : h ? h + "h " + (m % 60) + "m" : (m % 60) + "m"}`;
     });
   }
-  setInterval(() => { if (syncPhases()) redraw(true); else countdowns(); }, 30000);    // kickoff while the page is open
+  setInterval(() => { if (syncPhases()) { redraw(true); liveTrack(); } else countdowns(); }, 30000);    // kickoff while the page is open
 
   /* ------------------------------------------------------------------ live -> final, in the browser
      A game that has ended is graded right here from its official box score (ESPN's free public feed), the same
@@ -378,10 +386,10 @@ window.LL_BOOT = function () {
       for (const st of side.statistics || []) for (const a of st.athletes || []) {
         const v = Object.fromEntries((st.labels || []).map((l, i) => [l, (a.stats || [])[i]]));
         const r = (out[team] = out[team] || {})[a.athlete.displayName] = (out[team] || {})[a.athlete.displayName] ||
-          { pass: false, pass_yds: 0, pass_att: 0, comp: 0, pass_td: 0, ints: 0, rec: 0, rec_yds: 0, rush_att: 0, rush_yds: 0, td: 0, first_td: 0 };
+          { pass: false, pass_yds: 0, pass_att: 0, comp: 0, pass_td: 0, ints: 0, rec: 0, rec_yds: 0, tgt: 0, rush_att: 0, rush_yds: 0, td: 0, first_td: 0 };
         if (st.name === "passing") { const [c, t] = String(v["C/ATT"] || "0/0").split("/"); Object.assign(r, { pass: true, comp: n(c), pass_att: n(t), pass_yds: n(v.YDS), pass_td: n(v.TD), ints: n(v.INT) }); }
         if (st.name === "rushing") { r.rush_att = n(v.CAR); r.rush_yds = n(v.YDS); r.td += n(v.TD); }
-        if (st.name === "receiving") { r.rec = n(v.REC); r.rec_yds = n(v.YDS); r.td += n(v.TD); }
+        if (st.name === "receiving") { r.rec = n(v.REC); r.rec_yds = n(v.YDS); r.tgt = n(v.TGTS); r.td += n(v.TD); }
       }
     }
     const td = (s.scoringPlays || []).find((p) => (p.scoringType || {}).name === "touchdown");   // the game's first TD
@@ -421,7 +429,8 @@ window.LL_BOOT = function () {
   }
   let boxBusy = false, boxLast = 0;
   async function autoFinal() {
-    const due = allPicks.filter((p) => p.phase === "live" && !p.result && p.kick_utc && Date.now() - new Date(p.kick_utc) > 2.5 * 3600e3);
+    // due: 2.5 hours after kickoff, or as soon as the live tracker sees the game end
+    const due = allPicks.filter((p) => p.phase === "live" && !p.result && p.kick_utc && (Date.now() - new Date(p.kick_utc) > 2.5 * 3600e3 || (LIVE[p.serial] || {}).post));
     if (!due.length || boxBusy || Date.now() - boxLast < 120e3) return;
     boxBusy = true; boxLast = Date.now(); let moved = false;
     try {
@@ -438,7 +447,7 @@ window.LL_BOOT = function () {
             const r = findPlayer(teams, p), a = r ? BOX_STAT[p.prop] && BOX_STAT[p.prop](r) : null;
             if (a == null) { if (p.game_state !== "Awaiting stats") { p.game_state = "Awaiting stats"; moved = true; } continue; }
             const res = a === p.line ? "P" : (p.side === "OVER") === (a > p.line) ? "W" : "L";
-            Object.assign(p, { actual: a, result: res, phase: "final", game_state: "Final", box: true,
+            Object.assign(p, { actual: a, margin: Math.round((a - p.line) * 100) / 100, result: res, phase: "final", game_state: "Final", box: true,
                                pl: res === "W" ? dec(p.price) - 1 : res === "L" ? -1 : 0 });
             p.pl_u = p.pl * (p.units || 0);
             bumpRecord(p);
@@ -452,6 +461,97 @@ window.LL_BOOT = function () {
   }
   setTimeout(autoFinal, 1500);
   setInterval(autoFinal, 60000);
+
+  /* ------------------------------------------------------------------ live tracking, during the game
+     Every 30 seconds while a pick's game is on: the player's stat so far from ESPN's live box score, the game clock
+     and the score.  Painted in place (no redraw), so an open ticket stays open.  Display only: the grade
+     still comes from the final box score (autoFinal) and the official stats. */
+  const LIVE = {}, LIVE_GAMES = {};
+  const gkey = (a, b) => [a, b].sort().join("-");
+  const fmtV = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1);
+  let liveBusy = false;
+  async function liveTrack() {
+    const on = allPicks.filter((p) => p.phase === "live" && !p.result && p.kick_utc && Date.now() - new Date(p.kick_utc) < 6 * 3600e3);
+    if (!on.length || liveBusy || document.hidden) return;
+    liveBusy = true; let ended = false;
+    try {
+      for (const [sw, picks] of Object.entries(on.reduce((m, p) => ((m[`${p.season}|${p.week}`] = m[`${p.season}|${p.week}`] || []).push(p), m), {}))) {
+        const [season, week] = sw.split("|");
+        const res = await fetch(`${ESPN}scoreboard?dates=${season}&seasontype=2&week=${week}`, { cache: "no-store" });
+        if (!res.ok) continue;
+        for (const e of (await res.json()).events || []) {
+          const c = e.competitions[0], st = c.status || e.status || {}, ty = st.type || {};
+          if (ty.state !== "in" && ty.state !== "post") continue;
+          const tn = (x) => ESPN_TEAM[x.team.abbreviation] || x.team.abbreviation;
+          const H = c.competitors.find((x) => x.homeAway === "home"), A = c.competitors.find((x) => x.homeAway === "away");
+          const mine = picks.filter((p) => [tn(H), tn(A)].includes(p.team) && [tn(H), tn(A)].includes(p.opp));
+          if (!mine.length) continue;
+          const post = ty.state === "post";
+          const g = LIVE_GAMES[gkey(tn(H), tn(A))] = { away: tn(A), home: tn(H), as: A.score, hs: H.score, clock: post ? "Final" : ty.shortDetail || "", post };
+          const sres = await fetch(`${ESPN}summary?event=${e.id}`, { cache: "no-store" });
+          if (!sres.ok) continue;
+          const teams = parseBox(await sres.json());
+          for (const p of mine) {
+            const r = findPlayer(teams, p), v = r && BOX_STAT[p.prop] ? BOX_STAT[p.prop](r) : null;
+            LIVE[p.serial] = { now: v == null ? 0 : v, r, post, g };       // no box line yet = nothing so far
+          }
+          if (post) ended = true;
+        }
+      }
+    } catch (e) { /* feed down or offline: try again next time */ }
+    liveBusy = false;
+    paintLive();
+    if (ended) { boxLast = 0; autoFinal(); }                              // the game just ended: grade it now
+  }
+  // where a live pick stands: the stat so far against the line; "Hit" / "Lost" only once it's settled on the field
+  function liveRead(p) {
+    const L = LIVE[p.serial];
+    if (!L) return null;
+    const over = p.side === "OVER", line = p.line, now = L.now;
+    const k = now > line ? (over ? "hit" : "miss") : L.post ? (over ? "miss" : "hit") : "";
+    const max = Math.max(line * 1.5, now * 1.08, 1);
+    return { L, k, now, line, pos: (v) => `${Math.min(100, 100 * v / max).toFixed(1)}%` };
+  }
+  // the stat that explains the main one: targets behind catches, attempts behind passing yards, carries behind rushing
+  const SUPPORT = { receptions: (r) => [[r.tgt, "targets"]], receiving_yards: (r) => [[r.rec, "catches"], [r.tgt, "targets"]],
+    passing_yards: (r) => [[`${r.comp}/${r.pass_att}`, "comp/att"]], pass_attempts: (r) => [[r.comp, "completions"]],
+    completions: (r) => [[r.pass_att, "attempts"]], interceptions: (r) => [[r.pass_att, "attempts"]], pass_tds: (r) => [[r.pass_yds, "pass yds"]],
+    rushing_yards: (r) => [[r.rush_att, "carries"]], rush_attempts: (r) => [[r.rush_yds, "rush yds"]],
+    rush_rec_yards: (r) => [[r.rush_att, "carries"], [r.rec, "catches"]], anytime_td: (r) => [[r.rush_att, "carries"], [r.tgt, "targets"]],
+    first_td: (r) => [[r.rush_att, "carries"], [r.tgt, "targets"]] };
+  const ONE = { targets: "target", catches: "catch", carries: "carry", completions: "completion", attempts: "attempt" };
+  const ZERO = { pass_yds: 0, pass_att: 0, comp: 0, rec: 0, rec_yds: 0, tgt: 0, rush_att: 0, rush_yds: 0 };
+  const support = (p, L) => (SUPPORT[p.prop] ? SUPPORT[p.prop](L.r || ZERO) : []).map(([v, l]) => `<span><b>${esc(String(v))}</b> ${v === 1 ? ONE[l] || l : l}</span>`).join("");
+  function liveHTML(p, mini) {
+    const P = MKT(p.prop), R = liveRead(p);
+    if (!R) return mini ? "" : `<span class="lt wait"><span class="lt-dot"></span>Live stats load from the box score</span>`;
+    const label = `${fmtV(R.now)} of ${fmtV(R.line)} ${P.unit} so far`;
+    const track = `<span class="lt-track" role="img" aria-label="${esc(label)}"><span class="lt-fill" style="width:${R.pos(R.now)}"></span><span class="lt-line" style="left:${R.pos(R.line)}"></span></span>`;
+    if (mini) return `<span class="lt lt-mini${R.k ? " k-" + R.k : ""}">${track}<span class="lt-n"><b>${fmtV(R.now)}</b>/${fmtV(R.line)}</span></span>`;
+    const g = R.L.g;
+    return `<span class="lt${R.k ? " k-" + R.k : ""}">
+      <span class="lt-top"><span class="lt-now"><b>${fmtV(R.now)}</b><span>/ ${fmtV(R.line)} ${esc(P.unit)}</span></span>
+        <span class="lt-side"><span class="lt-sup">${support(p, R.L)}</span>${R.k ? `<span class="lt-v">${R.k === "hit" ? "Hit" : "Lost"}</span>` : ""}</span></span>
+      ${track}
+      ${g ? `<span class="lt-foot"><span class="lt-score">${esc(g.away)} <b>${esc(g.as)}</b><i></i>${esc(g.home)} <b>${esc(g.hs)}</b></span>
+        <span class="lt-clock">${g.post ? "" : `<span class="lt-dot"></span>`}${esc(g.clock)}</span></span>` : ""}</span>`;
+  }
+  const liveSlot = (p, mini) => p.phase === "live" && !p.result ? `<span class="lt-slot${mini ? " lt-mini" : ""}" data-live="${esc(p.serial)}"${mini ? ' data-mini="1"' : ""}>${liveHTML(p, mini)}</span>` : "";
+  const liveScore = (away, home) => { const g = LIVE_GAMES[gkey(away, home)];
+    return g ? `<span class="lscore">${g.post ? "" : `<span class="lt-dot"></span>`}<span>${esc(g.away)} <b>${esc(g.as)}</b></span><span>${esc(g.home)} <b>${esc(g.hs)}</b></span><span class="ls-clock">${esc(g.clock)}</span></span>` : ""; };
+  function paintLive() {
+    document.querySelectorAll("[data-live]").forEach((el) => {
+      const p = byId[el.dataset.live]; if (!p) return;
+      const before = el.querySelector(".lt-now b, .lt-n b"), was = before ? before.textContent : null;
+      el.innerHTML = liveHTML(p, !!el.dataset.mini);
+      const now = el.querySelector(".lt-now b, .lt-n b");
+      if (now && was != null && was !== now.textContent) now.classList.add("bump");
+    });
+    document.querySelectorAll("[data-livegame]").forEach((el) => { const [a, h] = el.dataset.livegame.split("@"); el.innerHTML = liveScore(a, h); });
+  }
+  setTimeout(liveTrack, 800);
+  setInterval(liveTrack, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) liveTrack(); });
   const afterDraw = () => { reveal(); countdowns(); filterCount(); };
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("button.share");
@@ -588,6 +688,7 @@ window.LL_BOOT = function () {
         <div class="t-meta"><span class="t-game">${gameLabel(p)}<span>${when(p.kick_utc, p.kick)}</span></span>${sharpChip(p.sharp, p.sharp_close)}${betMark(p)}</div>
         <div class="t-player">${playerLink(p)}</div>
         <div class="t-pick"><span><b>${bet(p)}</b><small>${odds(p.price)} ${esc(p.book)}</small></span>${p.result ? "" : status(p)}</div>
+        ${liveSlot(p)}
         ${p.phase === "open" && p.playable_to != null ? `<div class="final">Playable to <b>${odds(p.playable_to)}</b> &middot; <span class="muted">${esc(P.short || P.label)}</span></div>` : ""}        ${final}
         ${p.result ? `<div class="seal ${p.result}" aria-label="${SEAL[p.result]}">${SEAL[p.result]}</div>` : ""}
       </div>
@@ -596,7 +697,7 @@ window.LL_BOOT = function () {
       ${details(p, P)}
       <div class="stub">
         <div><span class="serial">No. ${esc(p.serial)}</span><span class="when">Stamped ${when(p.stamped_utc, p.stamped)}${p.verify ? ` &middot; <a class="verify" href="${esc(p.verify)}" target="_blank" rel="noopener noreferrer" title="The public commit that first posted this pick: ${when(p.posted_utc, p.posted_at)}${p.posted_before ? ", before the start" : ""}">verify &nearr;</a>` : ""}</span></div>
-        <div class="stub-r">${p.pre ? `<span class="chip pre">pre-launch</span>` : p.paper ? `<span class="chip paper">paper</span>` : ""}${betButton(p)}<button type="button" class="share" data-serial="${esc(p.serial)}" aria-label="Share this pick">Share</button>${barcode(p.serial)}</div>
+        <div class="stub-r">${p.pre ? `<span class="chip pre">pre-launch</span>` : p.paper ? `<span class="chip paper">paper</span>` : ""}${betButton(p)}${markBet(p)}<button type="button" class="share" data-serial="${esc(p.serial)}" aria-label="Share this pick">Share</button>${barcode(p.serial)}</div>
       </div>
     </article>`;
   }
@@ -617,7 +718,7 @@ window.LL_BOOT = function () {
         <span class="cs-l">
           <span class="cs-meta">${gameLabel(p)}<span class="cs-mk">${esc(P.short || P.label)}</span>${betMark(p)}</span>
           <span class="cs-player">${esc(nm(p))}</span>
-          <span class="cs-pick"><b>${bet(p)}</b> ${odds(p.price)} <small>${esc(abbr(p.book))}</small></span>
+          <span class="cs-pick"><b>${bet(p)}</b> ${odds(p.price)} <small>${esc(abbr(p.book))}</small></span>${liveSlot(p, true)}
         </span>
         <span class="cs-r">${status(p, true)}${CALM_STUBS ? (p.phase === "final" ? clvMini(p) : "") : clvMini(p) + (p.sharp ? `<span class="cs-sharp ${p.sharp === "no line" ? "noline" : p.sharp}" title="${SHARP[p.sharp] || ""}">${p.sharp === "no line" ? "&ndash;" : p.sharp === "agrees" ? "sharp &#10003;" : p.sharp === "against" ? "sharp &#10007;" : "sharp ~"}</span>` : "")}</span>
         <span class="cs-chev" aria-hidden="true"></span>
@@ -632,7 +733,7 @@ window.LL_BOOT = function () {
         <td class="l-player">${playerLink(p)}<span class="m-only l-sub gteams">${gameLabel(p)}</span></td><td class="opt">${esc(P.short || P.label)}</td>
         <td class="mono l-pick">${bet(p)} <span class="l-px">${odds(p.price)} <span class="muted">${esc(abbr(p.book))}</span></span></td>
         <td class="num opt mono">${v ? `${v.line} ${odds(v.price)}` : "&ndash;"}</td><td class="num m-hide">${clvMini(p)}</td>
-        <td class="opt">${p.sharp ? (SHARP[p.sharp] || "").replace("Sharp ", "") : ""}</td><td class="l-st">${status(p, true)}<span class="m-only">${clvMini(p)}</span></td></tr>
+        <td class="opt">${p.sharp ? (SHARP[p.sharp] || "").replace("Sharp ", "") : ""}</td><td class="l-st">${status(p, true)}${liveSlot(p, true)}<span class="m-only">${clvMini(p)}</span></td></tr>
         <tr class="lexp" hidden><td colspan="8"></td></tr>`; }).join("");
     return `<div class="tablebox"><table class="ltable"><thead><tr><th class="m-hide">Game</th><th>Player</th><th class="opt">Market</th><th>Pick</th><th class="num opt">Now / close</th><th class="num m-hide">CLV</th><th class="opt">Sharp</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
@@ -651,7 +752,7 @@ window.LL_BOOT = function () {
     const wrap = (ps) => state.view === "tickets" ? `<div class="tickets">${ps.map(one).join("")}</div>` : `<div class="stubs">${ps.map(one).join("")}</div>`;
     if (!grouped) return wrap(list);
     return gamesOf(list).map((g) => `<div class="gamegroup" id="g-${esc(g.id)}"><div class="ghead"><span class="gteams">${tm(g.away)}<i class="at">@</i>${tm(g.home)}</span>
-        <span class="mono muted">${when(g.kick_utc, g.kick)} &middot; ${g.picks.length} pick${g.picks.length === 1 ? "" : "s"}</span></div>${wrap(g.picks)}</div>`).join("");
+        <span class="mono muted">${g.picks.some((p) => p.phase === "live" && !p.result) ? `<span data-livegame="${esc(g.away)}@${esc(g.home)}">${liveScore(g.away, g.home)}</span>` : ""}${when(g.kick_utc, g.kick)} &middot; ${g.picks.length} pick${g.picks.length === 1 ? "" : "s"}</span></div>${wrap(g.picks)}</div>`).join("");
   }
 
   /* ------------------------------------------------------------------ records, scoreboards, charts */
@@ -889,7 +990,7 @@ window.LL_BOOT = function () {
       const recKs = MK.filter((k) => (state.market === "all" || k === state.market) && periodRec(MKT(k), season, week));
       const rec = ph === "final" && recKs.length ? `<div class="phase-rec">${recKs.map((k) => `<span><em>${esc(MKT(k).short || MKT(k).label)}</em> ${recLine(periodRec(MKT(k), season, week))}</span>`).join("")}</div>` : "";
       parts[ph] = { n: ps.length + sl.length, title, sub,
-        body: `${rec}${ps.length ? picksBlock(ps) : ""}${sl.length ? sealedBlock(sl) : ""}${ps.length || sl.length ? "" : `<div class="empty">Nothing ${title.toLowerCase()} ${ph === "final" ? "yet this " + PERIOD.toLowerCase() : "right now"}.</div>`}` };
+        body: `${rec}${ps.length ? picksBlock(ps) : ""}${sl.length ? sealedBlock(sl) : ""}${ps.length || sl.length ? "" : state.f.has("mine") ? `<div class="empty">${Object.keys(MYBETS).length ? `None of your marked bets are ${title.toLowerCase()}.` : "No bets marked yet. Open a pick and tap <b>Mark as bet</b>, and it shows up here."}</div>` : `<div class="empty">Nothing ${title.toLowerCase()} ${ph === "final" ? "yet this " + PERIOD.toLowerCase() : "right now"}.</div>`}` };
     });
     // which tab: the one you picked; else an old #ph- link; else the first with picks in it
     const fromHash = (location.hash.match(/^#ph-(open|live|final)$/) || [])[1];

@@ -1848,3 +1848,47 @@ button.wr-m:hover em { color: var(--accent); }
 
 /* a pick graded in the browser from the box score (app.js autoFinal): official at the next grade */
 .pill .boxsrc { font-size: .72em; margin-left: 1px; opacity: .8; }
+
+/* live tracking: a pick's stat so far during the game (app.js liveTrack) */
+.lt-slot { display: block; }
+.lt-slot:empty { display: none; }
+.lt { --tone: var(--ink); display: block; margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: var(--soft); border: 1px solid var(--rule); }
+.lt.k-hit { --tone: var(--up); }
+.lt.k-miss { --tone: var(--down); }
+.lt.wait { display: flex; align-items: center; gap: 8px; font: 500 12px/1.3 var(--body); color: var(--muted); }
+.lt-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.lt-now { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; letter-spacing: .02em; }
+.lt-now b { font: 600 24px/1 var(--mono); color: var(--tone); margin-right: 5px; display: inline-block; }
+.lt-side { display: inline-flex; align-items: center; gap: 12px; }
+.lt-sup { display: inline-flex; gap: 12px; font: 500 12px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lt-sup b { color: var(--ink); font-weight: 600; }
+.lt-v { font: 700 10.5px/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--tone);
+  padding: 5px 8px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent); }
+.lt-track { position: relative; display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.lt-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--tone); transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.lt-line { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--accent); }
+.lt-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 11px; padding-top: 9px;
+  border-top: 1px solid var(--rule); font: 500 12px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.lt-score { display: inline-flex; align-items: center; gap: 6px; }
+.lt-score b { color: var(--ink); font-weight: 600; }
+.lt-score i { width: 1px; height: 10px; background: var(--rule); margin: 0 4px; }
+.lt-clock { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; letter-spacing: .04em; text-transform: uppercase; }
+.lt-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--down); flex: none; animation: blink 1.6s ease-in-out infinite; }
+.lt b.bump { animation: ltbump .9s ease-out; }
+@keyframes ltbump { 0% { opacity: .35; transform: translateY(3px); } 100% { opacity: 1; transform: none; } }
+.lt.lt-mini { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 0; background: none; border: 0; border-radius: 0; }
+.lt.lt-mini .lt-track { width: 72px; height: 3px; }
+.lt.lt-mini .lt-line { top: -3px; bottom: -3px; }
+.lt.lt-mini .lt-n { font: 500 11.5px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.lt.lt-mini .lt-n b { font-weight: 600; color: var(--tone); }
+.cs-l .lt-slot.lt-mini { margin-top: 3px; }
+.l-st .lt-slot.lt-mini { margin-top: 7px; }
+.lscore { display: inline-flex; align-items: center; gap: 8px; margin-right: 12px; padding-right: 12px; border-right: 1px solid var(--rule); color: var(--muted); }
+.lscore b { font-weight: 600; color: var(--ink); }
+.lscore .ls-clock { text-transform: uppercase; letter-spacing: .04em; }
+@media (prefers-reduced-motion: reduce) { .lt-fill { transition: none; } .lt b.bump { animation: none; } }
+/* "Mark as bet" on a ticket, and the My bets filter chip */
+.markbet { font: 600 12.5px/1 var(--body); border: 1px solid var(--rule); background: var(--ticket); color: var(--ink); padding: 6px 9px; border-radius: 5px; cursor: pointer; }
+.markbet:hover { border-color: var(--ink); }
+.markbet[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #1b1203; }
+.fmine .fn { font: 600 11px/1 var(--mono); margin-left: 4px; opacity: .7; }
