@@ -100,7 +100,21 @@ window.LL_BOOT = function () {
     return moved;
   }
   syncPhases();
-  const byId = Object.fromEntries(allPicks.map((p) => [p.serial, p]));
+  // grades this browser already worked out from ESPN (autoFinal), kept on the device so a reload paints them at once
+  // instead of showing the published "live" state and regrading a second later.  Dropped once a publish grades the pick.
+  const GRADED = (() => { let m = {}; try { m = JSON.parse(store.get("ll-graded") || "{}") || {}; } catch (e) {}
+    const left = new Set(allPicks.filter((p) => !p.result).map((p) => p.serial));
+    Object.keys(m).forEach((k) => { if (!left.has(k)) delete m[k]; });
+    try { localStorage.setItem("ll-graded", JSON.stringify(m)); } catch (e) {}
+    return m; })();
+  const saveGrade = (p, patch) => { GRADED[p.serial] = patch; try { localStorage.setItem("ll-graded", JSON.stringify(GRADED)); } catch (e) {} };
+  for (const p of allPicks) {
+    const g = !p.result && p.phase === "live" && GRADED[p.serial];
+    if (!g) continue;
+    Object.assign(p, g);
+    if (p.result) bumpRecord(p);
+  }
+  const byId =Object.fromEntries(allPicks.map((p) => [p.serial, p]));
   // "I bet this": ticks a visitor makes on the Tools page, kept in this browser only (serial -> 1).  Serials carry the
   // season and week, so a new week starts empty; ticks for picks no longer on the site are dropped.
   const MYBETS = (() => { let m = {}; try { m = JSON.parse(store.get("ll-mybets") || "{}") || {}; } catch (e) {}
@@ -186,6 +200,8 @@ window.LL_BOOT = function () {
     const st = document.querySelector(".side-theme"); if (st) st.addEventListener("click", () => $("theme").click());
   }
   if (openCount) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openCount; b.hidden = false; });
+  const paintOpenCount = () => { const n = allPicks.filter((p) => p.phase !== "final").length + sealedOpen().length;
+    document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = n; b.hidden = !n; }); };
   // My bets: how many of your marked bets are still open or live
   const myCount = () => allPicks.filter((p) => iBet(p) && !p.result).length;
   const paintMyCount = () => { const n = myCount(); document.querySelectorAll("[data-mybets-count]").forEach((b) => { b.textContent = n; b.hidden = !n; }); };
@@ -450,7 +466,8 @@ window.LL_BOOT = function () {
   let boxBusy = false, boxLast = 0;
   async function autoFinal() {
     // due: 2.5 hours after kickoff, or as soon as the live tracker sees the game end
-    const due = allPicks.filter((p) => p.phase === "live" && !p.result && p.kick_utc && (Date.now() - new Date(p.kick_utc) > 2.5 * 3600e3 || (LIVE[p.serial] || {}).post));
+    const due = allPicks.filter((p) => p.phase === "live" && !p.result && p.kick_utc && (Date.now() - new Date(p.kick_utc) > 2.5 * 3600e3 || (LIVE[p.serial] || {}).post)
+      && !(GRADED[p.serial] && Date.now() - (GRADED[p.serial].at || 0) < 10 * 60e3));       // still waiting: re-check every 10 min
     if (!due.length || boxBusy || Date.now() - boxLast < 120e3) return;
     boxBusy = true; boxLast = Date.now(); let moved = false;
     try {
@@ -469,16 +486,18 @@ window.LL_BOOT = function () {
             if (a == null && !r) {                     // not in the box score: did he play?
               const played = await onRoster(e, p);
               if (played === false) {                  // didn't play: refunded, like the book does
-                Object.assign(p, { actual: null, margin: null, result: "VOID", phase: "final", game_state: "Final", box: true, pl: 0, pl_u: 0 });
+                const v = { actual: null, margin: null, result: "VOID", phase: "final", game_state: "Final", box: true, pl: 0, pl_u: 0 };
+                Object.assign(p, v); saveGrade(p, v);
                 bumpRecord(p); moved = true; continue;
               }
               if (played && ZERO_OK.has(p.prop)) a = 0;  // played, no stat line: 0
             }
-            if (a == null) { if (p.game_state !== "Awaiting stats") { p.game_state = "Awaiting stats"; moved = true; } continue; }
+            if (a == null) { if (p.game_state !== "Awaiting stats") { p.game_state = "Awaiting stats"; moved = true; } saveGrade(p, { game_state: "Awaiting stats", at: Date.now() }); continue; }
             const res = a === p.line ? "P" : (p.side === "OVER") === (a > p.line) ? "W" : "L";
             Object.assign(p, { actual: a, margin: Math.round((a - p.line) * 100) / 100, result: res, phase: "final", game_state: "Final", box: true,
                                pl: res === "W" ? dec(p.price) - 1 : res === "L" ? -1 : 0 });
             p.pl_u = p.pl * (p.units || 0);
+            saveGrade(p, { actual: p.actual, margin: p.margin, result: p.result, phase: "final", game_state: "Final", box: true, pl: p.pl, pl_u: p.pl_u });
             bumpRecord(p);
             moved = true;
           }
@@ -486,7 +505,7 @@ window.LL_BOOT = function () {
       }
     } catch (e) { /* feed down or offline: the next publish grades them */ }
     boxBusy = false;
-    if (moved) { redraw(true); paintMyCount(); }
+    if (moved) { redraw(true); paintMyCount(); paintOpenCount(); }
   }
   setTimeout(autoFinal, 1500);
   setInterval(autoFinal, 60000);
