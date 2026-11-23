@@ -33,7 +33,7 @@ window.LL_BOOT = function () {
       <div class="acct-pop">${items}</div></details>`;
   }
   { const q = new URLSearchParams(location.search).get("discord");
-    if (q && q !== "cancelled" && q !== "not-member" && typeof alert === "function") setTimeout(() => alert(q === "owner"
+    if (q && q !== "cancelled" && q !== "not-member" && q !== "linked" && typeof alert === "function") setTimeout(() => alert(q === "owner"
       ? "You're signed in as the Whop owner. The Discord Member role is only for customers, so nothing was changed in Discord."
       : "Discord couldn't be connected. Please try again, or message us on X."), 300); }
   const sealedOpen = () => SEALED.filter((p) => !p.kick_utc || new Date(p.kick_utc) > Date.now());
@@ -120,8 +120,53 @@ window.LL_BOOT = function () {
   const MYBETS = (() => { let m = {}; try { m = JSON.parse(store.get("ll-mybets") || "{}") || {}; } catch (e) {}
     const onSite = new Set(allPicks.map((p) => p.serial)); Object.keys(m).forEach((k) => { if (!onSite.has(k)) delete m[k]; }); return m; })();
   const iBet = (p) => !!MYBETS[p.serial];
-  const setBet = (serial, on) => { if (on) MYBETS[serial] = 1; else delete MYBETS[serial]; store.set("ll-mybets", JSON.stringify(MYBETS)); };
-  const markBet = (p) => `<button type="button" class="markbet" data-markbet="${esc(p.serial)}" aria-pressed="${iBet(p)}" title="Mark it after you place it: My bets (Filters) shows just these. Kept on this device only.">${iBet(p) ? "&#10003; Bet" : "Mark as bet"}</button>`;
+  const setBet = (serial, on) => { if (on) MYBETS[serial] = 1; else delete MYBETS[serial]; store.set("ll-mybets", JSON.stringify(MYBETS));
+    store.set("ll-mybets-at", String(Date.now())); pushBets(); };
+  // signed in: My bets also lives on the account (the site worker's /api/mybets), so every device shows the same bets -
+  // and members can get a Discord DM the moment one hits.  The newer copy wins (this device's or the account's).
+  const SYNC = SIGNED_IN && !PV && !!D.login_url;
+  const mbAt = () => Number(store.get("ll-mybets-at") || 0);
+  let MB_SERVER = null, pushT = 0;
+  const pickInfo = (p) => { const P = MKT(p.prop) || {}, label = String(P.short || P.label || p.prop).toLowerCase();
+    return { serial: p.serial, name: nm(p), team: p.team, opp: p.opp, prop: p.prop, label, bet: P.yes ? bet(p) : `${bet(p)} ${label}`,
+             unit: P.unit || "", line: p.line, side: p.side, kick_utc: p.kick_utc }; };
+  const mbPost = (body) => fetch("/api/mybets", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then((r) => r.json().catch(() => null).then((j) => { if (r.ok && j) MB_SERVER = j; return [r.ok, j]; }));
+  function pushBets() {
+    if (!SYNC) return;
+    clearTimeout(pushT);
+    pushT = setTimeout(() => mbPost({ at: mbAt(), picks: allPicks.filter(iBet).map(pickInfo) }).catch(() => {}), 600);
+  }
+  if (SYNC) fetch("/api/mybets", { credentials: "same-origin", cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((j) => {
+    if (!j || !j.sync) return;
+    MB_SERVER = j;
+    const onSite = new Set(allPicks.map((p) => p.serial)), theirs = j.serials.filter((k) => onSite.has(k));
+    const same = theirs.length === Object.keys(MYBETS).length && theirs.every((k) => MYBETS[k]);
+    if (j.at > mbAt() && !same) {                                         // the account is newer: this device follows it
+      Object.keys(MYBETS).forEach((k) => delete MYBETS[k]); theirs.forEach((k) => { MYBETS[k] = 1; });
+      store.set("ll-mybets", JSON.stringify(MYBETS)); store.set("ll-mybets-at", String(j.at));
+      paintMyCount(); redraw(false);
+    } else if (!same) pushBets();                                         // this device is newer (or the account is empty)
+    if (page === "mybets") paintAlerts();
+  }).catch(() => {});
+  // My bets: the Discord hit-alert switch (members with Discord linked)
+  function paintAlerts() {
+    const el = $("mb-alerts"), j = MB_SERVER;
+    if (!el || !j) return;
+    const dc = brand("discord", 18);
+    el.innerHTML = !j.member ? `<div class="mb-al">${dc}<span><b>Hit alerts are for members.</b> Members get a Discord message the moment a bet they marked hits.</span></div>`
+      : !j.discord ? `<div class="mb-al wrap">${dc}<span><b>Get a Discord message when a bet hits.</b> Connect Discord once, then switch it on here.</span><a class="mb-al-b" href="/auth/discord">Connect Discord</a></div>`
+      : `<div class="mb-al">${dc}<span><b>Hit alerts in Discord</b> ${j.alerts ? "A DM the moment one of these bets hits (unders when the game ends)." : "Off. Switch on for a DM the moment one of these bets hits."}</span>
+          <button type="button" class="mb-sw" id="mb-sw" role="switch" aria-checked="${!!j.alerts}"><i></i><span>${j.alerts ? "On" : "Off"}</span></button></div>`;
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("#mb-sw");
+    if (!b || !MB_SERVER) return;
+    b.disabled = true;
+    mbPost({ alerts: !MB_SERVER.alerts }).then(([ok, j]) => { if (!ok && j && j.error === "link-discord") MB_SERVER.discord = false; paintAlerts(); })
+      .catch(() => { b.disabled = false; });
+  });
+  const markBet = (p) => `<button type="button" class="markbet" data-markbet="${esc(p.serial)}" aria-pressed="${iBet(p)}" title="Mark it after you place it: it shows up in My bets.">${iBet(p) ? "&#10003; Bet" : "Mark as bet"}</button>`;
   const betMark = (p) => page !== "mybets" && iBet(p) ? `<span class="ibet" title="You marked this as bet on the Tools page">&#10003; Bet</span>` : "";
   const linkTo = (p) => new URL(pickUrl(p), location.href).href;           // every pick lives on Results (open to all)
   const byKick = (a, b) => (a.kick_utc || "").localeCompare(b.kick_utc || "") || MK.indexOf(a.prop) - MK.indexOf(b.prop);
@@ -857,8 +902,8 @@ window.LL_BOOT = function () {
   function notify() {
     const feed = `${D.site_url || ""}feed.xml`;
     return `<section class="notify"><div><div class="eyebrow">Never miss a pick</div><h2>Get alerts</h2></div><div class="ways">
-      ${MEMBER && D.discord_link ? `<a class="way" href="/auth/discord"><b>${brand("discord", 22)} Discord</b><span>${ck("ll_d") === "1" ? "Linked: every pick posts in #alerts. Tap to re-link if you lost access." : "Connect your Discord to join the members' #alerts channel: your phone buzzes the moment a pick is posted."}</span></a>`
-        : D.discord ? `<a class="way" href="${esc(D.discord)}" target="_blank" rel="noopener"><b>${brand("discord", 22)} Discord</b><span>Free. Every pick posts in #alerts the moment it's made, so your phone buzzes before the line moves.</span></a>` : ""}
+      ${MEMBER && D.discord_link ? `<a class="way" href="/auth/discord"><b>${brand("discord", 22)} Discord</b><span>${ck("ll_d") === "1" ? "Linked: every pick posts in the alerts channels. Tap to re-link if you lost access." : "Connect your Discord to join the members' alerts channels: your phone buzzes the moment a pick is posted."}</span></a>`
+        : D.discord ? `<a class="way" href="${esc(D.discord)}" target="_blank" rel="noopener"><b>${brand("discord", 22)} Discord</b><span>Free. The day's free pick posts in #free-pick, and members get every pick the moment it's made.</span></a>` : ""}
       ${D.x ? `<a class="way" href="https://x.com/${esc(D.x)}" target="_blank" rel="noopener"><b>${brand("x", 20)} X</b><span>Follow <span class="mono">@${esc(D.x)}</span> for the pick of the day and every week's results.</span></a>` : ""}
       <a class="way" href="feed.xml"><b>RSS feed</b><span>Add <span class="mono">${esc(feed)}</span> to any feed reader app and switch on alerts for new items.</span></a>
       ${standalone() ? "" : `<a class="way" href="#" id="install"><b>Add to home screen</b><span>iPhone: tap Share, then Add to Home Screen. Android: tap the menu, then Install app. It opens full screen, like an app.</span></a>`}</div></section>`;
@@ -1463,13 +1508,13 @@ window.LL_BOOT = function () {
     const linked = ck("ll_d") === "1";
     const card = (cls, head, body, cta = "") => `<article class="al-card ${cls}"><h3>${head}</h3><div>${body}</div>${cta}</article>`;
     const btn = (href, text, cls = "gold") => `<a class="lp-btn ${cls}" href="${esc(href)}"${/^https?:/.test(href) ? ' target="_blank" rel="noopener"' : ""}>${text}</a>`;
-    const steps = `<ol class="al-steps"><li>Open Discord and long-press (or right-click) <b>#alerts</b>.</li><li>Tap <b>Notification Settings</b>, then <b>All Messages</b>.</li><li>Make sure Discord's notifications are on in your phone's settings.</li></ol>`;
+    const steps = `<ol class="al-steps"><li>Open Discord and long-press (or right-click) each channel under <b>Alerts</b> (<b>#receptions</b>, <b>#receiving-yards</b>, <b>#passing-yards</b>).</li><li>Tap <b>Notification Settings</b>, then <b>All Messages</b>.</li><li>Make sure Discord's notifications are on in your phone's settings.</li></ol>`;
     const alerts = MEMBER
-      ? card("main", `${brand("discord", 22)} Every pick, in #alerts`, linked
-          ? `<p><b class="up">&#10003; Your Discord is linked.</b> Every pick posts in <b>#alerts</b> the moment it's made, one card per drop, grouped by game.</p>${steps}`
-          : `<p>Link your Discord once: our bot adds you to the members' <b>#alerts</b> channel, where every pick posts the moment it's made.</p>${steps}`,
+      ? card("main", `${brand("discord", 22)} Every pick, in Discord`, linked
+          ? `<p><b class="up">&#10003; Your Discord is linked.</b> Every pick posts the moment it's made, one channel per prop: <b>#receptions</b>, <b>#receiving-yards</b> and <b>#passing-yards</b>.</p>${steps}`
+          : `<p>Link your Discord once: our bot adds you to the members' alerts channels (<b>#receptions</b>, <b>#receiving-yards</b>, <b>#passing-yards</b>), where every pick posts the moment it's made.</p>${steps}`,
           btn("/auth/discord", linked ? "Re-link Discord" : "Connect Discord", linked ? "ghost dark" : "gold"))
-      : card("main", `${brand("discord", 22)} #alerts is for members`, `<p>Members get every pick the moment it's made, in Discord's <b>#alerts</b> channel, with a phone notification, sized for their bankroll on the site.</p>`,
+      : card("main", `${brand("discord", 22)} Pick alerts are for members`, `<p>Members get every pick the moment it's made, in Discord's alerts channels, with a phone notification, sized for their bankroll on the site.</p>`,
           D.join_url ? btn(D.join_url, `Start your ${esc((D.offer || {}).trial || "membership")}`) : "");
     const free = D.discord ? card("", `${brand("discord", 20)} A free pick every game day`, `<p>Everyone can join the Line Ledger Discord: the day's free pick posts in <b>#free-pick</b>.</p>`, btn(D.discord, "Join the Discord", "ghost dark")) : "";
     const x = D.x ? card("", `${brand("x", 18)} Results and the free pick`, `<p>Follow <b>@${esc(D.x)}</b> for the free pick and every week's results.</p>`, btn(`https://x.com/${D.x}`, `Follow @${esc(D.x)}`, "ghost dark")) : "";
@@ -2020,23 +2065,141 @@ window.LL_BOOT = function () {
       const done = mine.filter((p) => p.result).sort((a, b) => String(b.kick_utc || "").localeCompare(String(a.kick_utc || "")));
       const n = (r) => done.filter((p) => p.result === r).length, u = done.reduce((t, p) => t + (p.pl_u || 0), 0);
       const rec = `${n("W")}-${n("L")}${n("P") ? "-" + n("P") : ""}`;
-      hero("My bets", "Your <em>bets</em>", mine.length ? "Every pick you marked as bet, kept on this device." : "Mark a pick as bet and it shows up here, live through the game.",
+      hero("My bets", "Your <em>bets</em>", mine.length ? `Every pick you marked as bet${SYNC ? ", on every device you sign in on" : ", kept on this device"}.` : "Mark a pick as bet and it shows up here, live through the game.",
         `<div class="tote"><div><b data-mb-live>${live.length}</b><span>live</span></div><div><b>${open.length}</b><span>open</span></div>
           <div><b>${rec}</b><span>record${n("VOID") ? ` &middot; ${n("VOID")} void` : ""}</span></div><div><b class="${tone(u)}">${done.length ? num(u, 2, true) + "u" : "&ndash;"}</b><span>units</span></div></div>`);
       const part = (title, list, grouped, note) => list.length ? `<div class="mb-part"><div class="mb-h"><h2>${title}</h2><span class="mono muted">${list.length}</span>${note || ""}</div>${picksBlock(list, grouped)}</div>` : "";
-      $("mb").innerHTML = mine.length
+      $("mb").innerHTML = (SYNC ? `<div id="mb-alerts"></div>` : "") + (mine.length
         ? part("Live", live, true) + part("Open", open, true) + part("Settled", done, false)
-        : `<div class="empty mb-empty"><p><b>No bets marked yet.</b></p><p>Open any pick on <a href="${href(F.home)}">This ${PERIOD.toLowerCase()}</a> and tap <b>Mark as bet</b>. Your bets collect here: live ones track the game, and settled ones keep your record.</p><p class="muted">Marks stay in this browser on this device (nothing is sent anywhere).</p></div>`;
+        : `<div class="empty mb-empty"><p><b>No bets marked yet.</b></p><p>Open any pick on <a href="${href(F.home)}">This ${PERIOD.toLowerCase()}</a> and tap <b>Mark as bet</b>. Your bets collect here: live ones track the game, and settled ones keep your record.</p><p class="muted">${SYNC ? "Marks are saved to your account, so they show on every device you sign in on." : "Marks stay in this browser on this device."}</p></div>`);
+      paintAlerts();
       afterDraw();
     };
     redraw();
   }
-  const PAGES = { landing, home, mybets: myBetsPage, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
+  /* ------------------------------------------------------------------ game days: the scoreboard strip across the top
+     (today's games from ESPN, games you bet first, then games with picks), and a page for each game: game.html?e=<id> */
+  const tcode = (c) => ESPN_TEAM[c.team.abbreviation] || c.team.abbreviation;
+  const etDay = (d) => new Date(d).toLocaleDateString("en-US", { timeZone: "America/New_York" });
+  function sbGame(e, c) {
+    c = c || e.competitions[0];
+    const ty = ((c.status || e.status || {}).type) || {};
+    const H = c.competitors.find((x) => x.homeAway === "home"), A = c.competitors.find((x) => x.homeAway === "away");
+    return { id: e.id, date: e.date || c.date, home: tcode(H), away: tcode(A), hs: H.score, as: A.score, state: ty.state || "pre",
+             detail: ty.state === "post" ? "Final" : ty.shortDetail || "", week: (e.week || {}).number };
+  }
+  // this site's picks on a game (same two teams, kicking off within half a day of it: a rematch is another game)
+  const picksOn = (g) => allPicks.filter((p) => [g.home, g.away].includes(p.team) && [g.home, g.away].includes(p.opp)
+    && (!p.kick_utc || !g.date || Math.abs(new Date(p.kick_utc) - new Date(g.date)) < 12 * 3600e3));
+  const gameUrl = (id) => `game.html?e=${encodeURIComponent(id)}${keep ? "&" + keep.slice(1) : ""}`;
+  const kickTime = (d) => { try { return new Date(d).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } };
+  let SB_EVENTS = [];
+  function paintStrip() {
+    const el = $("sbar");
+    if (!el) return;
+    const today = etDay(Date.now());
+    const games = SB_EVENTS.map((e) => sbGame(e)).filter((g) => g.state === "in" || etDay(g.date) === today);
+    if (!games.length) { el.hidden = true; return; }
+    const rank = (g) => { const ps = picksOn(g); return ps.some(iBet) ? 0 : ps.length ? 1 : 2; };
+    const st = { in: 0, pre: 1, post: 2 };
+    games.sort((a, b) => rank(a) - rank(b) || st[a.state] - st[b.state] || String(a.date).localeCompare(String(b.date)));
+    el.hidden = false;
+    el.innerHTML = games.map((g) => {
+      const ps = picksOn(g), mine = ps.filter(iBet).length, pre = g.state === "pre";
+      const lead = pre ? "" : +g.as > +g.hs ? "a" : +g.hs > +g.as ? "h" : "";
+      const row = (code, score, win) => `<span class="sbg-t${win ? " lead" : ""}"><i style="background:${(TEAMS[code] || ["#5b6880"])[0]}"></i>${esc(code)}</span><b class="sbg-s${win ? " lead" : ""}">${pre ? "" : esc(score)}</b>`;
+      return `<a class="sbg ${g.state}${mine ? " mine" : ps.length ? " picks" : ""}" href="${gameUrl(g.id)}">
+        ${row(g.away, g.as, lead === "a")}${row(g.home, g.hs, lead === "h")}
+        <span class="sbg-st">${g.state === "in" ? `<span class="lt-dot"></span>` : ""}${esc(pre ? kickTime(g.date) : g.detail)}</span>
+        <span class="sbg-n">${mine ? `&#10003; ${mine} bet` : ps.length ? `${ps.length} pick${ps.length === 1 ? "" : "s"}` : ""}</span></a>`; }).join("");
+  }
+  let sbNext = 0;
+  async function scoreStrip() {
+    if (document.hidden || Date.now() < sbNext) return;
+    try {
+      const res = await fetch(`${ESPN}scoreboard`, { cache: "no-store" });
+      if (res.ok) SB_EVENTS = (await res.json()).events || [];
+    } catch (e) { /* offline: keep the last one */ }
+    const live = SB_EVENTS.some((e) => ((e.status || {}).type || {}).state === "in");
+    sbNext = Date.now() + (live ? 25e3 : 5 * 60e3);                         // every 30s while a game is on
+    paintStrip();
+  }
+  if (page !== "landing" && (SPORT.markets || []).length) {
+    const w = document.querySelector(".board .wrap");
+    if (w) { w.insertAdjacentHTML("afterbegin", `<nav class="sbar" id="sbar" aria-label="Today's games" hidden></nav>`); scoreStrip(); setInterval(scoreStrip, 30000);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) { sbNext = 0; scoreStrip(); } }); }
+  }
+
+  // one game: the score, this site's picks on it (live through the game), the box score and the scoring plays
+  function gamePage() {
+    const ev = qs.get("e");
+    $("app").innerHTML = `<div id="gm"></div>`;
+    let S = null, G = null, busy = false;
+    const COLS = { passing: ["C/ATT", "YDS", "TD", "INT"], rushing: ["CAR", "YDS", "TD"], receiving: ["REC", "TGTS", "YDS", "TD"] };
+    const TITLE = { passing: "Passing", rushing: "Rushing", receiving: "Receiving" };
+    function box(ps) {
+      const sides = (((S || {}).boxscore || {}).players) || [];
+      if (!sides.some((x) => (x.statistics || []).some((st) => (st.athletes || []).length))) return "";
+      const hasPick = (team, name) => ps.some((p) => p.team === team && (normName(nm(p)) === normName(name) || initLast(nm(p)) === initLast(name)));
+      const order = [G.away, G.home];
+      return `<section><div class="head"><div><h2>Box score</h2></div></div><div class="gm-box">${sides.slice().sort((a, b) => order.indexOf(tcode(a)) - order.indexOf(tcode(b))).map((side) => {
+        const team = tcode(side);
+        return `<div class="gm-team"><h3>${tm(team)}</h3>${["passing", "rushing", "receiving"].map((k) => {
+          const st = (side.statistics || []).find((x) => x.name === k);
+          if (!st || !(st.athletes || []).length) return "";
+          const cols = COLS[k].filter((c) => (st.labels || []).includes(c));
+          return `<table class="gm-t"><thead><tr><th>${TITLE[k]}</th>${cols.map((c) => `<th class="num">${c === "TGTS" ? "TGT" : c}</th>`).join("")}</tr></thead><tbody>${st.athletes.map((a) => {
+            const v = Object.fromEntries((st.labels || []).map((l, i) => [l, (a.stats || [])[i]])), mine = hasPick(team, a.athlete.displayName);
+            return `<tr class="${mine ? "has" : ""}"><td>${mine ? `<i class="gm-pk" title="Line Ledger has a pick on him"></i>` : ""}${esc(a.athlete.shortName || a.athlete.displayName)}</td>${cols.map((c) => `<td class="num">${esc(v[c] ?? "")}</td>`).join("")}</tr>`; }).join("")}</tbody></table>`; }).join("")}</div>`; }).join("")}</div>
+        <p class="note"><i class="gm-pk"></i> a player Line Ledger has a pick on. Stats from ESPN; official numbers come from the final box score.</p></section>`;
+    }
+    function plays() {
+      const sp = (S || {}).scoringPlays || [];
+      if (!sp.length) return "";
+      return `<section><div class="head"><div><h2>Scoring plays</h2></div></div><ol class="gm-plays">${sp.slice().reverse().map((x) => {
+        const t = ESPN_TEAM[(x.team || {}).abbreviation] || (x.team || {}).abbreviation || "";
+        return `<li><span class="gm-q">Q${(x.period || {}).number || ""} <span class="muted">${esc((x.clock || {}).displayValue || "")}</span></span>${tm(t)}
+          <span class="gm-tx"><b>${esc((x.type || {}).text || "")}</b> ${esc(x.text || "")}</span><span class="mono gm-sc">${esc(x.awayScore)}-${esc(x.homeScore)}</span></li>`; }).join("")}</ol></section>`;
+    }
+    redraw = () => {
+      if (!G) { $("gm").innerHTML = `<div class="empty">${S === false ? "That game couldn't be loaded. Check your connection and try again." : "Loading the game..."}</div>`; return; }
+      const ps = picksOn(G).sort(byKick), pre = G.state === "pre";
+      hero(`${G.week ? `${PERIOD} ${G.week} &middot; ` : ""}${when(G.date)}`, `${esc(G.away)} <em>@</em> ${esc(G.home)}`,
+        (((S.gameInfo || {}).venue || {}).fullName ? esc(S.gameInfo.venue.fullName) : ""),
+        `<div class="gm-score ${G.state}"><div class="gm-side">${tm(G.away)}<b>${pre ? "" : esc(G.as)}</b></div>
+          <div class="gm-mid">${G.state === "in" ? `<span class="lt-dot"></span>` : ""}${esc(pre ? kickTime(G.date) : G.detail)}</div>
+          <div class="gm-side h"><b>${pre ? "" : esc(G.hs)}</b>${tm(G.home)}</div></div>`);
+      $("gm").innerHTML = `<div id="gm-in">
+        <section><div class="head"><div><h2>Our picks</h2></div>${ps.length ? `<span class="mono muted">${ps.length}</span>` : ""}</div>
+          ${ps.length ? picksBlock(ps, false) : `<div class="empty">No Line Ledger picks on this game.</div>`}</section>
+        ${box(ps) || (pre ? `<section><div class="empty">The box score fills in at kickoff.</div></section>` : "")}${plays()}</div>`;
+      document.title = `${G.away} @ ${G.home} - Line Ledger`;
+      afterDraw(); paintLive();
+    };
+    async function load() {
+      if (busy || document.hidden || !ev) return;
+      busy = true;
+      try {
+        const res = await fetch(`${ESPN}summary?event=${encodeURIComponent(ev)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(res.status);
+        S = await res.json();
+        const c = ((S.header || {}).competitions || [])[0];
+        if (c) { G = sbGame({ id: ev, date: c.date, week: (S.header || {}).week ? { number: S.header.week } : null, competitions: [c] }, c); }
+      } catch (e) { if (!S) S = false; }
+      busy = false;
+      redraw();
+      if (G && G.state === "in") liveTrack();
+    }
+    redraw(); load();
+    setInterval(() => { if (G && G.state === "in") load(); }, 30000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && G && G.state !== "post") load(); });
+  }
+  const PAGES = { landing, home, mybets: myBetsPage, game: gamePage, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
   // the free-account gate: This week, Tools and Parlays ask visitors to sign in (free) first; the landing page, the
   // record, results, player pages and How it works stay open to everyone
   function gatePage() {
     const back = encodeURIComponent(location.pathname + location.search + location.hash);
-    const what = { home: `This ${PERIOD.toLowerCase()}'s picks`, tools: "The betting tools", parlays: "The model's parlays", mybets: "Your bets" }[page] || "This page";
+    const what = { home: `This ${PERIOD.toLowerCase()}'s picks`, tools: "The betting tools", parlays: "The model's parlays", mybets: "Your bets", game: "Game pages" }[page] || "This page";
     const nSealed = sealedOpen().length;
     hero("Free account", `${esc(what)}, <em>free with an account</em>`, "Sign in with Whop in a few seconds. No card needed.");
     $("app").innerHTML = `<section class="gate"><div class="gate-card">
@@ -2066,14 +2229,14 @@ window.LL_BOOT = function () {
     if (MEMBER && w === "1") {
       const linked = ck("ll_d") === "1";
       box("ok", `<div><b>You're in &#10003;</b> Every pick is unlocked on this site${OWNER ? "." : linked
-        ? ", and your Discord is connected: picks post in #alerts." : `. <b>Last step:</b> connect Discord to get a phone alert for every pick in #alerts.`}</div>
+        ? ", and your Discord is connected: picks post in the alerts channels." : `. <b>Last step:</b> connect Discord to get a phone alert for every pick.`}</div>
         ${OWNER || linked ? "" : dcBtn}`);
       return;
     }
     if (MEMBER && !OWNER && D.discord_link && ck("ll_d") !== "1" && ["home", "open"].includes(page)
         && +(store.get("ll-dc-until") || 0) < Date.now()) {
       box("dc", `<div class="dc-l">${brand("discord", 22)}<div><b>Get every pick on your phone.</b>
-          <span class="ll-note-sub">Connect Discord once: picks ping you in #alerts the moment they're made.</span></div></div>
+          <span class="ll-note-sub">Connect Discord once: picks ping you the moment they're made.</span></div></div>
         <div class="ll-note-acts">${dcBtn}<button class="lp-btn ghost" id="dc-later">Later</button></div>`);
       const later = $("dc-later");
       if (later) later.onclick = () => { store.set("ll-dc-until", String(Date.now() + 3 * 864e5)); document.querySelectorAll(".ll-note-wrap").forEach((x) => x.remove()); };
@@ -2103,7 +2266,7 @@ window.LL_BOOT = function () {
   const opening = (() => { try { if (sessionStorage.getItem("ll-open")) return false; sessionStorage.setItem("ll-open", "1"); return true; } catch (e) { return false; } })();
   const fromOutside = (() => { try { return !document.referrer || new URL(document.referrer).origin !== location.origin; } catch (e) { return true; } })();
   if (D.landing && D.gate && D.login_url && !SIGNED_IN && !TOUR && page === "home" && (standalone() || fromOutside) && !location.search && opening) { location.replace("./"); return; }
-  if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays", "mybets"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
+  if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays", "mybets", "game"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
   else (PAGES[page] || home)();
   notice();
   if (canInstall() && !window.__llIbTimer) {
