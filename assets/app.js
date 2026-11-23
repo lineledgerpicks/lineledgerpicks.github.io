@@ -158,17 +158,18 @@ window.LL_BOOT = function () {
   const openBadge = (id) => id === "home" ? `<span class="badge" data-open-count hidden></span>` : id === "mybets" ? `<span class="badge mb" data-mybets-count hidden></span>` : "";
   const sportSwitch = SPORTS.length < 2 ? "" : `<div class="sports" role="group" aria-label="Sport">${SPORTS.map((s) =>
     `<a href="${href(s.files.home)}"${s.key === SPORT.key ? ' aria-current="true"' : ""}>${esc(s.name)}${(s.markets || []).length ? "" : "<small>soon</small>"}</a>`).join("")}</div>`;
-  const inMore = here === "method" || here === "clv" || here === "parlays";
+  // phones: My bets in the middle of the bottom bar; with parlays on, Results lives in More
+  const BB = F.parlays ? ["home", "parlays", "mybets", "tools"] : ["home", "mybets", "results", "tools"];
+  const inMore = here === "method" || here === "clv" || (F.parlays && here === "results");
   $("tabs").innerHTML = sportSwitch + places.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}${openBadge(id)}</a>`).join("");
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<span class="social">${fl("soc")}</span>${account("navlogin")}`);
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, the rest in the More sheet
-  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${places.filter(([id]) => id !== "parlays").map(([id, link, label, ic]) =>
+  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${BB.map((id) => places.find((x) => x[0] === id)).filter(Boolean).map(([id, link, label, ic]) =>
       `<a href="${link}"${cur(id)}>${svg(ic)}<span>${esc(id === "home" ? PERIOD : label)}</span>${openBadge(id)}</a>`).join("")}
       <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inMore ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}
-      ${F.parlays ? `<div class="eyebrow">Picks</div><a href="${F.parlays}"${cur("parlays")}>Model parlays<i aria-hidden="true">&rsaquo;</i></a>` : ""}
-      <div class="eyebrow">Records</div><a href="clv.html${keep}"${cur("clv")}>Closing line value<i aria-hidden="true">&rsaquo;</i></a>
+      <div class="eyebrow">Records</div>${F.parlays ? `<a href="${F.results}"${cur("results")}>Results<i aria-hidden="true">&rsaquo;</i></a>` : ""}<a href="clv.html${keep}"${cur("clv")}>Closing line value<i aria-hidden="true">&rsaquo;</i></a>
       ${D.login_url ? `<div class="eyebrow">Account</div>${account("")}` : ""}<div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
   const openCount = openNow.length + sealedOpen().length;
   // desktop and laptop: a menu down the left side, always there (phones keep the top bar and the bottom tabs)
@@ -1128,10 +1129,11 @@ window.LL_BOOT = function () {
   function resultsPage() {
     const linked = byId[decodeURIComponent(location.hash.slice(1))];
     const want = qs.get("prop") || (linked && linked.prop) || store.get("ll-rk");
-    state.market = MK.includes(want) ? want : "all";
+    const hasPr = (PR.model || []).some((x) => x.locked && x.legs.length);
+    state.market = MK.includes(want) || (want === "parlays" && hasPr) ? want : "all";
     const withRec = MK.filter((k) => (MKT(k).picks || []).length);
     hero("Results", `Every pick, <em>graded</em>`, `Stamped before the start, graded at the stamped price, compared with the closing line. Nothing edited, nothing removed.`);
-    const sw = () => `<div class="pbar rbar" role="group" aria-label="Prop">${[["all", "All props"], ...withRec.map((k) => [k, MKT(k).short || MKT(k).label])]
+    const sw = () => `<div class="pbar rbar" role="group" aria-label="Prop">${[["all", "All props"], ...withRec.map((k) => [k, MKT(k).short || MKT(k).label]), ...(hasPr ? [["parlays", "Parlays"]] : [])]
       .map(([k, l]) => `<button type="button" data-market="${k}" aria-pressed="${state.market === k}">${esc(l)}</button>`).join("")}</div>`;
     $("app").innerHTML = `<div class="ctl rctl">${sw()}</div><div id="rbody"></div>`;
     const short = (k) => esc(MKT(k).short || MKT(k).label);
@@ -1149,7 +1151,11 @@ window.LL_BOOT = function () {
       const byProp = withRec.map((k) => { const P = MKT(k), r = (P.record || [])[0] || {};
         return `<button type="button" class="rp-row" data-market="${k}"><span class="rp-n">${esc(P.label)}${P.paper ? ` <span class="chip paper">paper</span>` : ""}</span>
           <span class="rp-c"><b>${wl(r)}</b><small>record</small></span><span class="rp-c"><b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 1, true) + "u" : "&ndash;"}</b><small>units</small></span>
-          <span class="rp-c opt"><b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b><small>vs close</small></span><span class="wr-go" aria-hidden="true">&rsaquo;</span></button>`; }).join("");
+          <span class="rp-c opt"><b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b><small>vs close</small></span><span class="wr-go" aria-hidden="true">&rsaquo;</span></button>`; }).join("")
+        + (hasPr ? (() => { const a = (PR.record || {}).all || {};
+          return `<button type="button" class="rp-row" data-market="parlays"><span class="rp-n">Model parlays</span>
+          <span class="rp-c"><b>${a.n ? `${a.W}-${a.L}${a.P ? "-" + a.P : ""}` : "0-0"}</b><small>record</small></span><span class="rp-c"><b class="${tone(a.units)}">${a.n ? num(a.units, 1, true) + "u" : "&ndash;"}</b><small>units</small></span>
+          <span class="rp-c opt"><b class="${tone(a.roi)}">${a.n ? pct(a.roi) : "&ndash;"}</b><small>ROI</small></span><span class="wr-go" aria-hidden="true">&rsaquo;</span></button>`; })() : "");
       const row = (key) => { const [season, w] = key.split("-"), px = prw[key] || [];
         const ks = withRec.filter((k) => { const r = MKT(k).weeks[key]; return r && (r.n || r.pending); });
         const pr = px.length ? `<span class="wr-m"><em>Parlays</em><b>${px.filter((x) => x.result === "W").length}-${px.filter((x) => x.result === "L").length}</b></span>` : "";
@@ -1188,6 +1194,35 @@ window.LL_BOOT = function () {
 </details></section>`;
     }
 
+    // the model's parlays: the record, then each week's slips - one compact row per week, tap it for the legs
+    function parlayHistory() {
+      const rec = PR.record || {}, a = rec.all || {};
+      const done = PR.model.filter((x) => x.locked && x.legs.length);
+      const byWeek = {};
+      done.forEach((x) => { (byWeek[`${x.season}-${x.week}`] ||= []).push(x); });
+      const keys = Object.keys(byWeek).sort((p, q) => q.localeCompare(p, undefined, { numeric: true }));
+      const res = (x) => x.result === "W" ? `<b class="up">+${num(x.units, 2)}u</b>` : x.result === "L" ? `<b class="down">&minus;1.00u</b>` : x.result === "P" ? "<b>Push</b>" : `<span class="muted">pending</span>`;
+      const legDot = (l) => `<i class="ph-d ${l.result || ""}" aria-hidden="true">${l.result === "W" ? "&#10003;" : l.result === "L" ? "&#10007;" : l.result ? "&ndash;" : ""}</i>`;
+      const wk = (key) => { const [season, w] = key.split("-"), xs = byWeek[key];
+        return `<details class="rweek prw"><summary class="wkrow"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
+          <span class="wr-ms">${xs.map((x) => `<span class="wr-m"><em><i class="bkdot ${BOOKDOT[x.book] || ""}"></i>${esc(abbr(x.book))}</em><span class="ph-ds">${x.legs.map(legDot).join("")}</span>${res(x)}</span>`).join("")}</span>
+          <span class="wr-go" aria-hidden="true">&rsaquo;</span></summary>
+          <div class="ph-grid">${xs.map((x) => `<div class="ph ${x.result ? "res-" + x.result : ""}">
+            <div class="ph-h"><span class="ph-bk"><i class="bkdot ${BOOKDOT[x.book] || ""}"></i>${esc(x.book)}</span><span class="mono">${odds(x.american)}</span>${res(x)}</div>
+            <ol class="ph-legs">${x.legs.map((l) => { const p = byId[l.serial];
+              return `<li class="${l.result || ""}">${legDot(l)}<a href="${p ? pickUrl(p) : "#"}"><b>${esc(p ? nm(p) : l.player)}</b><small>${bet(l)} ${short(l.prop)} &middot; ${odds(l.price)}</small></a>
+                <span class="mono">${l.actual != null ? `had ${l.actual}` : ""}</span></li>`; }).join("")}</ol>
+            <div class="ph-f muted">Model ${pct(x.model_chance || 0, false)} &middot; book ${pct(x.book_chance || 0, false)} &middot; locked ${when(x.lock_utc, x.lock)}</div></div>`).join("")}</div></details>`; };
+      const chip = (label, r) => `<span class="pr-chip"><em>${esc(label)}</em><b>${r.W}-${r.L}${r.P ? "-" + r.P : ""}</b><b class="${tone(r.units)}">${num(r.units, 2, true)}u</b></span>`;
+      return `<section class="rhead"><div class="head"><div><div class="eyebrow">The record &middot; 1 unit per parlay</div><h2>Model parlays</h2></div></div>
+          <div class="pr-strip"><div class="pr-main"><span class="pr-k">Parlay record</span><b class="pr-wl">${a.n ? `${a.W}-${a.L}${a.P ? "-" + a.P : ""}` : "0-0"}</b>
+            <b class="pr-u ${tone(a.units)}">${num(a.units || 0, 2, true)}u</b>${a.n ? `<span class="pr-roi ${tone(a.roi)}">${pct(a.roi)} ROI</span>` : ""}</div>
+            <div class="pr-books">${PBOOKS.filter((b) => rec[b] && rec[b].n).map((b) => chip(b, rec[b])).join("")}</div></div>
+          <p class="lede">${PR.legs || 3} legs from different Sunday games at one book, stamped at the first Sunday kickoff. This ${PERIOD.toLowerCase()}'s are on <a href="${F.parlays}">Parlays</a>.</p></section>
+        <section><div class="head"><div><h2>Every ${PERIOD.toLowerCase()}</h2></div></div><p class="lede">Tap a ${PERIOD.toLowerCase()} to see the legs.</p>
+          ${keys.length ? `<div class="wkrows">${keys.map(wk).join("")}</div>` : `<div class="empty">No parlay has locked yet.</div>`}</section>`;
+    }
+
     const fill = (det) => { const slot = det.querySelector(".rw-picks");
       if (slot.dataset.done) return; const [season, w] = det.dataset.key.split("-").map(Number);
       const ps = MKT(state.market).picks.filter((p) => p.season === season && p.week === w).sort(byKick);
@@ -1202,12 +1237,12 @@ window.LL_BOOT = function () {
       if (state.market === "all") u.searchParams.delete("prop"); else u.searchParams.set("prop", state.market);
       if (linked && linked.prop !== state.market) u.hash = "";
       history.replaceState(null, "", u);
-      $("rbody").innerHTML = state.market === "all" ? overview() : one(state.market);
+      $("rbody").innerHTML = state.market === "all" ? overview() : state.market === "parlays" ? parlayHistory() : one(state.market);
       afterDraw(); countUp();
       if (linked && linked.prop === state.market) open(linked.serial);
       else if (location.hash === "#clv") { const c = $("clv"); if (c) c.scrollIntoView(); }
     };
-    document.addEventListener("toggle", (e) => { const d = e.target; if (d.classList && d.classList.contains("rweek") && d.open) fill(d); }, true);
+    document.addEventListener("toggle", (e) => { const d = e.target; if (d.classList && d.classList.contains("rweek") && !d.classList.contains("prw") && d.open) fill(d); }, true);
     document.addEventListener("click", (e) => { const a = e.target.closest("[data-goto]"); if (!a) return;
       e.preventDefault(); history.replaceState(null, "", `#${a.dataset.goto}`); open(a.dataset.goto); });
     redraw();
@@ -1360,18 +1395,19 @@ window.LL_BOOT = function () {
   function parlaysPage() {
     const weeks = [...new Set(PR.model.map((x) => `${x.season}-${x.week}`))];
     const cur = weeks.length ? weeks[weeks.length - 1] : null;
-    const now = cur ? PR.model.filter((x) => `${x.season}-${x.week}` === cur && !(x.locked && x.result)) : [];
+    const now = cur ? PR.model.filter((x) => `${x.season}-${x.week}` === cur) : [];   // graded ones stay until next week's arrive
     const past = PR.model.filter((x) => x.locked && x.legs.length && !now.includes(x));
-    hero(`Model parlays${cur ? ` &middot; ${PERIOD} ${cur.split("-")[1]}` : ""}`, "This week's <em>parlays</em>",
+    const wkNo = now.length ? cur.split("-")[1] : cur ? Number(cur.split("-")[1]) + 1 : null;
+    hero(`Model parlays${wkNo ? ` &middot; ${PERIOD} ${wkNo}` : ""}`, "This week's <em>parlays</em>",
       `${PR.legs || 3} legs from different Sunday games, one book each. They lock at the first Sunday kickoff.`,
       now.length ? `${now.length > 1 ? `<div class="pc-tabs" role="tablist" aria-label="Book">${now.map((x, i) => `<button type="button" role="tab" data-bk="${BOOKDOT[x.book] || ""}" aria-selected="${i === 0}"><i class="pc-dot ${BOOKDOT[x.book] || ""}"></i>${esc(x.book)}<b>${x.legs.length ? odds(x.american) : "&ndash;"}</b></button>`).join("")}</div>` : ""}
-        <div class="pc-grid hero-pc">${now.map((x, i) => modelCard(x, true, i === 0)).join("")}</div>` : `<div class="empty">No parlay this ${PERIOD.toLowerCase()} yet. They fill in as Sunday lines are posted.</div>`);
+        <div class="pc-grid hero-pc">${now.map((x, i) => modelCard(x, true, i === 0)).join("")}</div>` : `<div class="pc-wait"><b>${wkNo ? `${PERIOD} ${wkNo}'s` : "The next"} parlays aren't out yet.</b><span>They fill in as Sunday lines are posted and lock at the first Sunday kickoff.</span></div>`);
     const rec = PR.record || {}, all = rec.all || {};
     const chip = (label, r) => `<span class="pr-chip"><em>${esc(label)}</em><b>${r.W}-${r.L}${r.P ? "-" + r.P : ""}</b><b class="${tone(r.units)}">${num(r.units, 2, true)}u</b></span>`;
-    const strip = all.n ? `<div class="pr-strip">
-        <div class="pr-main"><span class="pr-k">Parlay record</span><b class="pr-wl">${all.W}-${all.L}${all.P ? "-" + all.P : ""}</b>
-          <b class="pr-u ${tone(all.units)}">${num(all.units, 2, true)}u</b><span class="pr-roi ${tone(all.roi)}">${pct(all.roi)} ROI</span></div>
-        <div class="pr-books">${PBOOKS.filter((b) => rec[b] && rec[b].n).map((b) => chip(b, rec[b])).join("")}</div></div>`
+    void chip;
+    const strip = all.n ? `<a class="rp-row pr-link" href="${F.results}?prop=parlays"><span class="rp-n">Parlay record<small>Every past slip, leg by leg</small></span>
+        <span class="rp-c"><b>${all.W}-${all.L}${all.P ? "-" + all.P : ""}</b><small>record</small></span><span class="rp-c"><b class="${tone(all.units)}">${num(all.units, 2, true)}u</b><small>units</small></span>
+        <span class="rp-c opt"><b class="${tone(all.roi)}">${pct(all.roi)}</b><small>ROI</small></span><span class="wr-go" aria-hidden="true">&rsaquo;</span></a>`
       : `<div class="empty">No model parlay has been graded yet. The first ones lock at this week's first Sunday kickoff.</div>`;
     // past weeks: one tidy row each, newest first; tap to see that week's parlays
     const byWeek = {};
@@ -1389,9 +1425,8 @@ window.LL_BOOT = function () {
       document.querySelectorAll(".pc-tabs button").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
       document.querySelectorAll(".hero-pc > .pc").forEach((c) => c.classList.toggle("on", c.dataset.bk === b.dataset.bk));
     });
-    $("app").innerHTML = `
-      <section>${strip}</section>
-      ${rows ? `<section><div class="head"><div><h2>Past ${PERIOD.toLowerCase()}s</h2></div></div><div class="pws">${rows}</div></section>` : ""}`;
+    void rows;                                                          // past slips live on Results (Parlays) now
+    $("app").innerHTML = `<section>${strip}</section>`;
   }
 
   /* ------------------------------------------------------------------ Tools: bet sizing, odds, parlays, player lookup.
