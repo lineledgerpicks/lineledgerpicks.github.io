@@ -1716,3 +1716,6 @@ a.pc-who:hover b { text-decoration: underline; }
 }
 .pc-lock { white-space: nowrap; }
 @media (max-width: 680px) { .pc-lock { font-size: 10.5px; padding: 6px 8px; } .pc-book { font-size: 18px; } }
+
+/* a pick graded in the browser from the box score (app.js autoFinal): official at the next grade */
+.pill .boxsrc { font-size: .72em; margin-left: 1px; opacity: .8; }

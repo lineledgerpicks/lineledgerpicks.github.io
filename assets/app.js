@@ -348,6 +348,90 @@ window.LL_BOOT = function () {
     });
   }
   setInterval(() => { if (syncPhases()) redraw(true); else countdowns(); }, 30000);    // kickoff while the page is open
+
+  /* ------------------------------------------------------------------ live -> final, in the browser
+     A game that has ended is graded right here from its official box score (ESPN's free public feed), the same
+     numbers `nfl.py grade` uses - no laptop needed.  It changes only how this page shows the pick; the published
+     record (totals, charts) updates at the next grade / update, which also re-checks every number. */
+  const ESPN = "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/";   // the host that allows browsers
+  const ESPN_TEAM = { WSH: "WAS", LAR: "LA", JAC: "JAX" };
+  const normName = (s) => String(s || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
+  const initLast = (s) => { const w = String(s || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/\./g, ". ").split(/\s+/).map((x) => x.replace(/[^a-z]/g, "")).filter(Boolean); return w.length > 1 ? w[0][0] + "|" + w[w.length - 1] : ""; };
+  const BOX_STAT = {
+    passing_yards: (r) => r.pass ? r.pass_yds : null, pass_attempts: (r) => r.pass ? r.pass_att : null,
+    completions: (r) => r.pass ? r.comp : null, pass_tds: (r) => r.pass ? r.pass_td : null, interceptions: (r) => r.pass ? r.ints : null,
+    receptions: (r) => r.rec, receiving_yards: (r) => r.rec_yds, rushing_yards: (r) => r.rush_yds, rush_attempts: (r) => r.rush_att,
+    rush_rec_yards: (r) => r.rush_yds + r.rec_yds, anytime_td: (r) => r.td, first_td: (r) => r.first_td };
+  const boxCache = {};
+  async function espnJSON(url, keep) {
+    try { const c = sessionStorage.getItem(url); if (c) return JSON.parse(c); } catch (e) {}
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const j = await res.json();
+    if (keep) { try { sessionStorage.setItem(url, JSON.stringify(j)); } catch (e) {} }
+    return j;
+  }
+  function parseBox(s) {                                  // summary -> players by team: {name: {...stats}}
+    const n = (x) => { const v = parseFloat(String(x).replace(/,/g, "")); return isFinite(v) ? v : 0; };
+    const out = {};
+    for (const side of (s.boxscore || {}).players || []) {
+      const team = ESPN_TEAM[side.team.abbreviation] || side.team.abbreviation;
+      for (const st of side.statistics || []) for (const a of st.athletes || []) {
+        const v = Object.fromEntries((st.labels || []).map((l, i) => [l, (a.stats || [])[i]]));
+        const r = (out[team] = out[team] || {})[a.athlete.displayName] = (out[team] || {})[a.athlete.displayName] ||
+          { pass: false, pass_yds: 0, pass_att: 0, comp: 0, pass_td: 0, ints: 0, rec: 0, rec_yds: 0, rush_att: 0, rush_yds: 0, td: 0, first_td: 0 };
+        if (st.name === "passing") { const [c, t] = String(v["C/ATT"] || "0/0").split("/"); Object.assign(r, { pass: true, comp: n(c), pass_att: n(t), pass_yds: n(v.YDS), pass_td: n(v.TD), ints: n(v.INT) }); }
+        if (st.name === "rushing") { r.rush_att = n(v.CAR); r.rush_yds = n(v.YDS); r.td += n(v.TD); }
+        if (st.name === "receiving") { r.rec = n(v.REC); r.rec_yds = n(v.YDS); r.td += n(v.TD); }
+      }
+    }
+    const td = (s.scoringPlays || []).find((p) => (p.scoringType || {}).name === "touchdown");   // the game's first TD
+    if (td && /^(Rushing|Passing|Receiving) Touchdown$/.test((td.type || {}).text || "")) {
+      const who = normName(String(td.text || "").split(/\s+\d+\s+(?:Yd|yd|Yard)/)[0]);
+      const hits = Object.values(out).flatMap((t) => Object.entries(t)).filter(([nm]) => normName(nm) === who);
+      if (hits.length === 1) hits[0][1].first_td = 1;
+    }
+    return out;
+  }
+  const findPlayer = (teams, p) => {
+    const t = teams[p.team] || {};
+    const full = Object.keys(t).filter((nm) => normName(nm) === normName(p.name || p.player));
+    if (full.length === 1) return t[full[0]];
+    const short = Object.keys(t).filter((nm) => initLast(nm) === initLast(p.name || p.player));
+    return short.length === 1 ? t[short[0]] : null;
+  };
+  let boxBusy = false, boxLast = 0;
+  async function autoFinal() {
+    const due = allPicks.filter((p) => p.phase === "live" && !p.result && p.kick_utc && Date.now() - new Date(p.kick_utc) > 2.5 * 3600e3);
+    if (!due.length || boxBusy || Date.now() - boxLast < 120e3) return;
+    boxBusy = true; boxLast = Date.now(); let moved = false;
+    try {
+      for (const [sw, picks] of Object.entries(due.reduce((m, p) => ((m[`${p.season}|${p.week}`] = m[`${p.season}|${p.week}`] || []).push(p), m), {}))) {
+        const [season, week] = sw.split("|");
+        const board = await espnJSON(`${ESPN}scoreboard?dates=${season}&seasontype=2&week=${week}`, false);
+        for (const e of board.events || []) {
+          if (!((e.status || {}).type || {}).completed) continue;
+          const tms = e.competitions[0].competitors.map((c) => ESPN_TEAM[c.team.abbreviation] || c.team.abbreviation);
+          const mine = picks.filter((p) => tms.includes(p.team) && tms.includes(p.opp));
+          if (!mine.length) continue;
+          const teams = boxCache[e.id] = boxCache[e.id] || parseBox(await espnJSON(`${ESPN}summary?event=${e.id}`, true));
+          for (const p of mine) {
+            const r = findPlayer(teams, p), a = r ? BOX_STAT[p.prop] && BOX_STAT[p.prop](r) : null;
+            if (a == null) { if (p.game_state !== "Awaiting stats") { p.game_state = "Awaiting stats"; moved = true; } continue; }
+            const res = a === p.line ? "P" : (p.side === "OVER") === (a > p.line) ? "W" : "L";
+            Object.assign(p, { actual: a, result: res, phase: "final", game_state: "Final", box: true,
+                               pl: res === "W" ? dec(p.price) - 1 : res === "L" ? -1 : 0 });
+            p.pl_u = p.pl * (p.units || 0);
+            moved = true;
+          }
+        }
+      }
+    } catch (e) { /* feed down or offline: the next publish grades them */ }
+    boxBusy = false;
+    if (moved) redraw(true);
+  }
+  setTimeout(autoFinal, 1500);
+  setInterval(autoFinal, 60000);
   const afterDraw = () => { reveal(); countdowns(); filterCount(); };
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("button.share");
@@ -384,7 +468,7 @@ window.LL_BOOT = function () {
   /* ------------------------------------------------------------------ status of a pick: open / live / grading / final */
   function status(p, short) {
     if (p.phase === "final" && p.void_reason) return `<span class="pill res-VOID" title="Voided: ${esc(p.void_reason)}">Voided</span>`;
-    if (p.phase === "final") return `<span class="pill res-${p.result}">${SEAL[p.result] || p.result}</span>`;
+    if (p.phase === "final") return `<span class="pill res-${p.result}"${p.box ? ` title="Graded from the official box score - the record updates at the next grade"` : ""}>${SEAL[p.result] || p.result}${p.box ? `<sup class="boxsrc">*</sup>` : ""}</span>`;
     if (p.phase === "live") return p.game_state === "Awaiting stats" ? `<span class="pill grading">Final &middot; grading</span>` : `<span class="pill live"><i></i>Live</span>`;
     return p.kick_utc ? `<span class="pill open"><span class="countdown" data-kick="${p.kick_utc}"${short ? ' data-short="1"' : ""}>${esc(p.kick)}</span></span>` : `<span class="pill open">Open</span>`;
   }
