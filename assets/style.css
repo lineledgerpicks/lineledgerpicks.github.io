@@ -1892,3 +1892,12 @@ button.wr-m:hover em { color: var(--accent); }
 .markbet:hover { border-color: var(--ink); }
 .markbet[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #1b1203; }
 .fmine .fn { font: 600 11px/1 var(--mono); margin-left: 4px; opacity: .7; }
+
+/* My bets page */
+.mybets { display: grid; gap: 28px; padding-top: 8px; }
+.mb-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+.mb-h h2 { font-size: clamp(22px, 3vw, 28px); }
+.mb-empty { display: grid; gap: 10px; text-align: left; max-width: 60ch; }
+.badge.mb { background: var(--accent); color: #1b1203; }
+.cs-meta { flex-wrap: wrap; row-gap: 5px; min-width: 0; }
+.cs-meta .ibet { margin-left: 8px; }

@@ -108,7 +108,7 @@ window.LL_BOOT = function () {
   const iBet = (p) => !!MYBETS[p.serial];
   const setBet = (serial, on) => { if (on) MYBETS[serial] = 1; else delete MYBETS[serial]; store.set("ll-mybets", JSON.stringify(MYBETS)); };
   const markBet = (p) => `<button type="button" class="markbet" data-markbet="${esc(p.serial)}" aria-pressed="${iBet(p)}" title="Mark it after you place it: My bets (Filters) shows just these. Kept on this device only.">${iBet(p) ? "&#10003; Bet" : "Mark as bet"}</button>`;
-  const betMark = (p) => iBet(p) ? `<span class="ibet" title="You marked this as bet on the Tools page">&#10003; Bet</span>` : "";
+  const betMark = (p) => page !== "mybets" && iBet(p) ? `<span class="ibet" title="You marked this as bet on the Tools page">&#10003; Bet</span>` : "";
   const linkTo = (p) => new URL(pickUrl(p), location.href).href;           // every pick lives on Results (open to all)
   const byKick = (a, b) => (a.kick_utc || "").localeCompare(b.kick_utc || "") || MK.indexOf(a.prop) - MK.indexOf(b.prop);
   const openNow = allPicks.filter((p) => p.phase !== "final").sort(byKick);
@@ -127,12 +127,13 @@ window.LL_BOOT = function () {
     results: '<path d="M5 20V11M12 20V5M19 20v-6M3 20h18"/>',
     parlays: '<path d="M8 7h11M8 12h11M8 17h11"/><circle cx="4.5" cy="7" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17" r="1"/>',
     tools: '<path d="M4 20l7-7M14.5 3.5a4.5 4.5 0 0 0-4 6.5L4 16.5V20h3.5l6.5-6.5a4.5 4.5 0 0 0 6.5-4l-3 1-2.5-2.5 1-3z"/>',
-    more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>' };
+    more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+    mybets: '<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2.2a2.8 2.8 0 0 0 0 5.6V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.2a2.8 2.8 0 0 0 0-5.6z"/><path d="M9.5 12l1.8 1.8 3.4-3.6"/>' };
   const BRAND = { x: "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z", discord: "M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.028C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.042-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" };
   const brand = (k, s = 18) => `<svg class="brand-${k}" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path fill="currentColor" d="${BRAND[k]}"/></svg>`;
   const svg = (k) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
   const places = (SPORT.markets || []).length
-    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["results", F.results, "Results", "results"],
+    ? [["home", href(F.home), `This ${PERIOD.toLowerCase()}`, "week"], ["mybets", `mybets.html${keep}`, "My bets", "mybets"], ["results", F.results, "Results", "results"],
        ...(F.parlays ? [["parlays", F.parlays, "Parlays", "parlays"]] : []), ["tools", `tools.html${keep}`, "Tools", "tools"]]
     : [["soon", href(F.home), "Overview", "week"]];
   const how = ["method", `method.html${keep}`, "About & how it works"];
@@ -140,18 +141,19 @@ window.LL_BOOT = function () {
   const fl = (cls) => follow.map(([link, label, k]) => `<a class="${cls}" href="${link}" target="_blank" rel="noopener" aria-label="${label.replace(/&middot;/, "-")}">${brand(k)}<span>${label}</span></a>`).join("");
   const here = page === "market" ? `m:${pageMarket}` : page;
   const cur = (id) => id === here ? ' aria-current="page"' : "";
-  const openBadge = (id) => id === "home" ? `<span class="badge" data-open-count hidden></span>` : "";
+  const openBadge = (id) => id === "home" ? `<span class="badge" data-open-count hidden></span>` : id === "mybets" ? `<span class="badge mb" data-mybets-count hidden></span>` : "";
   const sportSwitch = SPORTS.length < 2 ? "" : `<div class="sports" role="group" aria-label="Sport">${SPORTS.map((s) =>
     `<a href="${href(s.files.home)}"${s.key === SPORT.key ? ' aria-current="true"' : ""}>${esc(s.name)}${(s.markets || []).length ? "" : "<small>soon</small>"}</a>`).join("")}</div>`;
-  const inMore = here === "method" || here === "clv";
+  const inMore = here === "method" || here === "clv" || here === "parlays";
   $("tabs").innerHTML = sportSwitch + places.map(([id, link, label]) => `<a href="${link}"${cur(id)}>${esc(label)}${openBadge(id)}</a>`).join("");
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<span class="social">${fl("soc")}</span>${account("navlogin")}`);
   document.querySelector(".navr").insertAdjacentHTML("afterbegin", `<a class="navhow" href="${how[1]}"${cur(how[0])}>${how[2]}</a>`);
   // phones: the places as a bottom tab bar, the rest in the More sheet
-  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${places.map(([id, link, label, ic]) =>
+  document.body.insertAdjacentHTML("beforeend", `<nav class="bbar" aria-label="Pages"><span class="bb-glass" aria-hidden="true"></span>${places.filter(([id]) => id !== "parlays").map(([id, link, label, ic]) =>
       `<a href="${link}"${cur(id)}>${svg(ic)}<span>${esc(id === "home" ? PERIOD : label)}</span>${openBadge(id)}</a>`).join("")}
       <button type="button" id="bmore" aria-expanded="false" aria-controls="msheet"${inMore ? ' aria-current="page"' : ""}>${svg("more")}<span>More</span></button></nav>
     <div class="msheet" id="msheet" hidden><div class="ms-in">${sportSwitch}
+      ${F.parlays ? `<div class="eyebrow">Picks</div><a href="${F.parlays}"${cur("parlays")}>Model parlays<i aria-hidden="true">&rsaquo;</i></a>` : ""}
       <div class="eyebrow">Records</div><a href="clv.html${keep}"${cur("clv")}>Closing line value<i aria-hidden="true">&rsaquo;</i></a>
       ${D.login_url ? `<div class="eyebrow">Account</div>${account("")}` : ""}<div class="eyebrow">About</div><a href="${how[1]}"${cur(how[0])}>${how[2]}<i aria-hidden="true">&rsaquo;</i></a>${follow.length ? `<div class="eyebrow">Follow</div>${fl("fl-menu")}` : ""}</div></div>`);
   const openCount = openNow.length + sealedOpen().length;
@@ -165,8 +167,8 @@ window.LL_BOOT = function () {
     const toolNow = page === "tools" ? (location.hash.slice(1) || store.get("ll-tool") || "sizing") : "";
     const item = (link, label, icon, on, extra = "") => `<a href="${link}"${on ? ' aria-current="page"' : ""}>${ico(icon)}<span>${label}</span>${extra}</a>`;
     const groups = [
-      ["Picks", places.filter(([id]) => id === "home" || id === "parlays").map(([id, link, label, ic]) => item(link, id === "home" ? `This ${PERIOD.toLowerCase()}` : label, ICON[ic], id === here,
-        id === "home" ? `<span class="badge" data-open-count hidden></span>` : ""))],
+      ["Picks", places.filter(([id]) => id === "home" || id === "mybets" || id === "parlays").map(([id, link, label, ic]) => item(link, id === "home" ? `This ${PERIOD.toLowerCase()}` : label, ICON[ic], id === here,
+        openBadge(id)))],
       ["Record", places.filter(([id]) => id === "results").map(([id, link, label]) => item(link, label, SI_.results, id === here))
         .concat([item(`clv.html${keep}`, "Closing line value", SI_.clv, here === "clv")])],
       ["Tools", [["sizing", "Bet sizing", SI_.size], ["odds", "Odds", SI_.odds], ["parlay", "Parlay calculator", SI_.calc], ["player", "Player lookup", SI_.player], ["alerts", "Alerts", '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/>']]
@@ -184,6 +186,10 @@ window.LL_BOOT = function () {
     const st = document.querySelector(".side-theme"); if (st) st.addEventListener("click", () => $("theme").click());
   }
   if (openCount) document.querySelectorAll("[data-open-count]").forEach((b) => { b.textContent = openCount; b.hidden = false; });
+  // My bets: how many of your marked bets are still open or live
+  const myCount = () => allPicks.filter((p) => iBet(p) && !p.result).length;
+  const paintMyCount = () => { const n = myCount(); document.querySelectorAll("[data-mybets-count]").forEach((b) => { b.textContent = n; b.hidden = !n; }); };
+  paintMyCount();
   const navbar = $("navbar");
   const onScroll = () => navbar.classList.toggle("scrolled", scrollY > 8);
   addEventListener("scroll", onScroll, { passive: true }); onScroll();
@@ -301,7 +307,8 @@ window.LL_BOOT = function () {
     if (v) { state.view = v.dataset.view; store.set("ll-view3", state.view); document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === state.view))); redraw(false); return; }
     const mb = e.target.closest("button[data-markbet]");
     if (mb) { const s = mb.dataset.markbet, on = !iBet(byId[s]); setBet(s, on);
-      if (state.f.has("mine")) { redraw(false); return; }
+      paintMyCount();
+      if (state.f.has("mine") || page === "mybets") { redraw(false); return; }
       document.querySelectorAll(`[data-markbet="${s}"]`).forEach((b) => { b.setAttribute("aria-pressed", String(on)); b.innerHTML = on ? "&#10003; Bet" : "Mark as bet"; });
       document.querySelectorAll(`[data-serial="${s}"] .cs-meta, tr[data-serial="${s}"] .l-player`).forEach((el) => { const m = el.querySelector(".ibet"); if (m) m.remove(); if (on) el.insertAdjacentHTML("beforeend", betMark(byId[s])); });
       document.querySelectorAll(".fchips").forEach((el) => { el.outerHTML = filterChips(); }); return; }
@@ -414,6 +421,7 @@ window.LL_BOOT = function () {
     const u = p.units || 0;
     const add = (r) => {
       if (!r) return;
+      if (p.result === "VOID") { if (r.pending) r.pending -= 1; r.box = (r.box || 0) + 1; return; }
       r.n = (r.n || 0) + 1; r[p.result] = (r[p.result] || 0) + 1; if (r.pending) r.pending -= 1;
       r.units = (r.units || 0) + p.pl; r.roi = 100 * r.units / r.n; r.win = r.W + r.L ? 100 * r.W / (r.W + r.L) : null;
       if (u) { r.sized = (r.sized || 0) + p.pl * u; r.sized_risked = (r.sized_risked || 0) + u; r.sized_roi = 100 * r.sized / r.sized_risked; }
@@ -426,6 +434,18 @@ window.LL_BOOT = function () {
     add(row(SHARP[p.sharp]));
     add(row(p.side === "OVER" ? "Overs" : "Unders"));
     add(P.weeks && P.weeks[`${p.season}-${p.week}`]);
+  }
+  // a player missing from the box score: ESPN's game roster says whether he played (0 for these props) or not (VOID)
+  const ZERO_OK = new Set(["receptions", "receiving_yards", "rushing_yards", "rush_attempts", "rush_rec_yards", "anytime_td", "first_td"]);
+  const lastName = (s) => { const w = String(s || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").split(/[\s.]+/).map((x) => x.replace(/[^a-z'-]/g, "")).filter(Boolean); return w[w.length - 1] || ""; };
+  const rosterOf = (ev, tid) => espnJSON(`https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events/${ev}/competitions/${ev}/competitors/${tid}/roster?lang=en&region=us`, true)
+    .then((j) => j.entries || []).catch(() => []);
+  async function onRoster(e, p) {                      // -> true (played), false (didn't), null (can't tell)
+    const c = e.competitions[0].competitors.find((x) => (ESPN_TEAM[x.team.abbreviation] || x.team.abbreviation) === p.team);
+    if (!c) return null;
+    const ent = await rosterOf(e.id, c.team.id);
+    const me = p.eid ? ent.filter((x) => String(x.playerId) === String(p.eid)) : ent.filter((x) => lastName(x.displayName) === lastName(p.name || p.player));
+    return me.length === 1 ? !me[0].didNotPlay : null;
   }
   let boxBusy = false, boxLast = 0;
   async function autoFinal() {
@@ -444,7 +464,16 @@ window.LL_BOOT = function () {
           if (!mine.length) continue;
           const teams = boxCache[e.id] = boxCache[e.id] || parseBox(await espnJSON(`${ESPN}summary?event=${e.id}`, true));
           for (const p of mine) {
-            const r = findPlayer(teams, p), a = r ? BOX_STAT[p.prop] && BOX_STAT[p.prop](r) : null;
+            const r = findPlayer(teams, p);
+            let a = r ? BOX_STAT[p.prop] && BOX_STAT[p.prop](r) : null;
+            if (a == null && !r) {                     // not in the box score: did he play?
+              const played = await onRoster(e, p);
+              if (played === false) {                  // didn't play: refunded, like the book does
+                Object.assign(p, { actual: null, margin: null, result: "VOID", phase: "final", game_state: "Final", box: true, pl: 0, pl_u: 0 });
+                bumpRecord(p); moved = true; continue;
+              }
+              if (played && ZERO_OK.has(p.prop)) a = 0;  // played, no stat line: 0
+            }
             if (a == null) { if (p.game_state !== "Awaiting stats") { p.game_state = "Awaiting stats"; moved = true; } continue; }
             const res = a === p.line ? "P" : (p.side === "OVER") === (a > p.line) ? "W" : "L";
             Object.assign(p, { actual: a, margin: Math.round((a - p.line) * 100) / 100, result: res, phase: "final", game_state: "Final", box: true,
@@ -457,7 +486,7 @@ window.LL_BOOT = function () {
       }
     } catch (e) { /* feed down or offline: the next publish grades them */ }
     boxBusy = false;
-    if (moved) redraw(true);
+    if (moved) { redraw(true); paintMyCount(); }
   }
   setTimeout(autoFinal, 1500);
   setInterval(autoFinal, 60000);
@@ -1927,12 +1956,33 @@ window.LL_BOOT = function () {
     },
   };
 
-  const PAGES = { landing, home, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
+  /* ------------------------------------------------------------------ My bets: the picks you marked, like a sportsbook's
+     bet slip history - live ones tracking, then open, then settled.  Marks live on this device (MYBETS). */
+  function myBetsPage() {
+    $("app").innerHTML = `<section class="mybets" id="mb"></section>`;
+    redraw = () => {
+      const mine = allPicks.filter(iBet);
+      const live = mine.filter((p) => p.phase === "live" && !p.result), open = mine.filter((p) => p.phase === "open" && !p.result);
+      const done = mine.filter((p) => p.result).sort((a, b) => String(b.kick_utc || "").localeCompare(String(a.kick_utc || "")));
+      const n = (r) => done.filter((p) => p.result === r).length, u = done.reduce((t, p) => t + (p.pl_u || 0), 0);
+      const rec = `${n("W")}-${n("L")}${n("P") ? "-" + n("P") : ""}`;
+      hero("My bets", "Your <em>bets</em>", mine.length ? "Every pick you marked as bet, kept on this device." : "Mark a pick as bet and it shows up here, live through the game.",
+        `<div class="tote"><div><b data-mb-live>${live.length}</b><span>live</span></div><div><b>${open.length}</b><span>open</span></div>
+          <div><b>${rec}</b><span>record${n("VOID") ? ` &middot; ${n("VOID")} void` : ""}</span></div><div><b class="${tone(u)}">${done.length ? num(u, 2, true) + "u" : "&ndash;"}</b><span>units</span></div></div>`);
+      const part = (title, list, grouped, note) => list.length ? `<div class="mb-part"><div class="mb-h"><h2>${title}</h2><span class="mono muted">${list.length}</span>${note || ""}</div>${picksBlock(list, grouped)}</div>` : "";
+      $("mb").innerHTML = mine.length
+        ? part("Live", live, true) + part("Open", open, true) + part("Settled", done, false)
+        : `<div class="empty mb-empty"><p><b>No bets marked yet.</b></p><p>Open any pick on <a href="${href(F.home)}">This ${PERIOD.toLowerCase()}</a> and tap <b>Mark as bet</b>. Your bets collect here: live ones track the game, and settled ones keep your record.</p><p class="muted">Marks stay in this browser on this device (nothing is sent anywhere).</p></div>`;
+      afterDraw();
+    };
+    redraw();
+  }
+  const PAGES = { landing, home, mybets: myBetsPage, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
   // the free-account gate: This week, Tools and Parlays ask visitors to sign in (free) first; the landing page, the
   // record, results, player pages and How it works stay open to everyone
   function gatePage() {
     const back = encodeURIComponent(location.pathname + location.search + location.hash);
-    const what = { home: `This ${PERIOD.toLowerCase()}'s picks`, tools: "The betting tools", parlays: "The model's parlays" }[page] || "This page";
+    const what = { home: `This ${PERIOD.toLowerCase()}'s picks`, tools: "The betting tools", parlays: "The model's parlays", mybets: "Your bets" }[page] || "This page";
     const nSealed = sealedOpen().length;
     hero("Free account", `${esc(what)}, <em>free with an account</em>`, "Sign in with Whop in a few seconds. No card needed.");
     $("app").innerHTML = `<section class="gate"><div class="gate-card">
@@ -1999,7 +2049,7 @@ window.LL_BOOT = function () {
   const opening = (() => { try { if (sessionStorage.getItem("ll-open")) return false; sessionStorage.setItem("ll-open", "1"); return true; } catch (e) { return false; } })();
   const fromOutside = (() => { try { return !document.referrer || new URL(document.referrer).origin !== location.origin; } catch (e) { return true; } })();
   if (D.landing && D.gate && D.login_url && !SIGNED_IN && !TOUR && page === "home" && (standalone() || fromOutside) && !location.search && opening) { location.replace("./"); return; }
-  if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
+  if (D.gate && D.login_url && !SIGNED_IN && !TOUR && ["home", "tools", "parlays", "mybets"].includes(page) && !(page === "tools" && location.hash === "#alerts")) gatePage();
   else (PAGES[page] || home)();
   notice();
   if (canInstall() && !window.__llIbTimer) {
