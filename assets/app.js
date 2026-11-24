@@ -431,6 +431,16 @@ window.LL_BOOT = function () {
      record (totals, charts) updates at the next grade / update, which also re-checks every number. */
   const ESPN = "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/";   // the host that allows browsers
   const ESPN_TEAM = { WSH: "WAS", LAR: "LA", JAC: "JAX" };
+  // who has the ball and the down, from the scoreboard's "situation" (live games only): {poss, dd: "3rd & 10", at: "3rd & 10 at WAS 34", rz}
+  const fixTeams = (t) => String(t || "").replace(/\b(WSH|LAR|JAC)\b/g, (m) => ESPN_TEAM[m]);
+  function sitOf(c) {
+    const x = c && c.situation, who = x && c.competitors.find((k) => String(k.team.id) === String(x.possession));
+    if (!who) return null;
+    return { poss: ESPN_TEAM[who.team.abbreviation] || who.team.abbreviation, dd: x.down > 0 ? x.shortDownDistanceText || "" : "",
+             at: x.down > 0 ? fixTeams(x.downDistanceText || "") : "", rz: !!x.isRedZone };
+  }
+  const BALL = `<svg class="ball" viewBox="0 0 16 10" width="13" height="8" aria-label="has the ball" role="img"><ellipse cx="8" cy="5" rx="7.4" ry="4.4" fill="#9a5a34"/><path d="M5.2 5h5.6M7 3.9v2.2M9 3.9v2.2" stroke="#fff" stroke-width=".9" stroke-linecap="round"/></svg>`;
+  const ballIf = (sit, team) => sit && sit.poss === team ? BALL : "";
   const normName = (s) => String(s || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
   const initLast = (s) => { const w = String(s || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/\./g, ". ").split(/\s+/).map((x) => x.replace(/[^a-z]/g, "")).filter(Boolean); return w.length > 1 ? w[0][0] + "|" + w[w.length - 1] : ""; };
   const BOX_STAT = {
@@ -581,7 +591,7 @@ window.LL_BOOT = function () {
           const mine = picks.filter((p) => [tn(H), tn(A)].includes(p.team) && [tn(H), tn(A)].includes(p.opp));
           if (!mine.length) continue;
           const post = ty.state === "post";
-          const g = LIVE_GAMES[gkey(tn(H), tn(A))] = { away: tn(A), home: tn(H), as: A.score, hs: H.score, clock: post ? "Final" : ty.shortDetail || "", post };
+          const g = LIVE_GAMES[gkey(tn(H), tn(A))] = { away: tn(A), home: tn(H), as: A.score, hs: H.score, clock: post ? "Final" : ty.shortDetail || "", post, sit: post ? null : sitOf(c) };
           const sres = await fetch(`${ESPN}summary?event=${e.id}`, { cache: "no-store" });
           if (!sres.ok) continue;
           const teams = parseBox(await sres.json());
@@ -627,12 +637,12 @@ window.LL_BOOT = function () {
       <span class="lt-top"><span class="lt-now"><b>${fmtV(R.now)}</b><span>/ ${fmtV(R.line)} ${esc(P.unit)}</span></span>
         <span class="lt-side"><span class="lt-sup">${support(p, R.L)}</span>${R.k ? `<span class="lt-v">${R.k === "hit" ? "Hit" : "Lost"}</span>` : ""}</span></span>
       ${track}
-      ${g ? `<span class="lt-foot"><span class="lt-score">${esc(g.away)} <b>${esc(g.as)}</b><i></i>${esc(g.home)} <b>${esc(g.hs)}</b></span>
-        <span class="lt-clock">${g.post ? "" : `<span class="lt-dot"></span>`}${esc(g.clock)}</span></span>` : ""}</span>`;
+      ${g ? `<span class="lt-foot"><span class="lt-score">${ballIf(g.sit, g.away)}${esc(g.away)} <b>${esc(g.as)}</b><i></i>${ballIf(g.sit, g.home)}${esc(g.home)} <b>${esc(g.hs)}</b></span>
+        <span class="lt-clock">${g.post ? "" : `<span class="lt-dot"></span>`}${esc(g.clock)}${g.sit && g.sit.dd ? `<span class="lt-dd${g.sit.rz ? " rz" : ""}">${esc(g.sit.dd)}</span>` : ""}</span></span>` : ""}</span>`;
   }
   const liveSlot = (p, mini) => p.phase === "live" && !p.result ? `<span class="lt-slot${mini ? " lt-mini" : ""}" data-live="${esc(p.serial)}"${mini ? ' data-mini="1"' : ""}>${liveHTML(p, mini)}</span>` : "";
   const liveScore = (away, home) => { const g = LIVE_GAMES[gkey(away, home)];
-    return g ? `<span class="lscore">${g.post ? "" : `<span class="lt-dot"></span>`}<span>${esc(g.away)} <b>${esc(g.as)}</b></span><span>${esc(g.home)} <b>${esc(g.hs)}</b></span><span class="ls-clock">${esc(g.clock)}</span></span>` : ""; };
+    return g ? `<span class="lscore">${g.post ? "" : `<span class="lt-dot"></span>`}<span>${ballIf(g.sit, g.away)}${esc(g.away)} <b>${esc(g.as)}</b></span><span>${ballIf(g.sit, g.home)}${esc(g.home)} <b>${esc(g.hs)}</b></span><span class="ls-clock">${esc(g.clock)}${g.sit && g.sit.dd ? ` &middot; ${esc(g.sit.dd)}` : ""}</span></span>` : ""; };
   function paintLive() {
     document.querySelectorAll("[data-live]").forEach((el) => {
       const p = byId[el.dataset.live]; if (!p) return;
@@ -2086,7 +2096,7 @@ window.LL_BOOT = function () {
     const ty = ((c.status || e.status || {}).type) || {};
     const H = c.competitors.find((x) => x.homeAway === "home"), A = c.competitors.find((x) => x.homeAway === "away");
     return { id: e.id, date: e.date || c.date, home: tcode(H), away: tcode(A), hs: H.score, as: A.score, state: ty.state || "pre",
-             detail: ty.state === "post" ? "Final" : ty.shortDetail || "", week: (e.week || {}).number };
+             detail: ty.state === "post" ? "Final" : ty.shortDetail || "", week: (e.week || {}).number, sit: ty.state === "in" ? sitOf(c) : null };
   }
   // this site's picks on a game (same two teams, kicking off within half a day of it: a rematch is another game)
   const picksOn = (g) => allPicks.filter((p) => [g.home, g.away].includes(p.team) && [g.home, g.away].includes(p.opp)
@@ -2107,12 +2117,16 @@ window.LL_BOOT = function () {
     el.innerHTML = games.map((g) => {
       const ps = picksOn(g), mine = ps.filter(iBet).length, pre = g.state === "pre";
       const lead = pre ? "" : +g.as > +g.hs ? "a" : +g.hs > +g.as ? "h" : "";
-      const row = (code, score, win) => `<span class="sbg-t${win ? " lead" : ""}"><i style="background:${(TEAMS[code] || ["#5b6880"])[0]}"></i>${esc(code)}</span><b class="sbg-s${win ? " lead" : ""}">${pre ? "" : esc(score)}</b>`;
+      const row = (code, score, win) => `<span class="sbg-t${win ? " lead" : ""}"><i style="background:${(TEAMS[code] || ["#5b6880"])[0]}"></i>${esc(code)}${ballIf(g.sit, code)}</span><b class="sbg-s${win ? " lead" : ""}">${pre ? "" : esc(score)}</b>`;
       return `<a class="sbg ${g.state}${mine ? " mine" : ps.length ? " picks" : ""}" href="${gameUrl(g.id)}">
         ${row(g.away, g.as, lead === "a")}${row(g.home, g.hs, lead === "h")}
         <span class="sbg-st">${g.state === "in" ? `<span class="lt-dot"></span>` : ""}${esc(pre ? kickTime(g.date) : g.detail)}</span>
-        <span class="sbg-n">${mine ? `&#10003; ${mine} bet` : ps.length ? `${ps.length} pick${ps.length === 1 ? "" : "s"}` : ""}</span></a>`; }).join("");
+        <span class="sbg-n">${mine ? `&#10003; ${mine} bet` : ps.length ? `${ps.length} pick${ps.length === 1 ? "" : "s"}` : ""}</span>
+        ${g.sit && g.sit.dd ? `<span class="sbg-dd${g.sit.rz ? " rz" : ""}">${esc(g.sit.dd)}</span>` : ""}</a>`; }).join("");
+    // the game page's own score box follows the strip (who has the ball, the down)
+    games.forEach((g) => document.querySelectorAll(`[data-sit="${g.id}"]`).forEach((x) => { x.innerHTML = sitLine(g.sit); }));
   }
+  const sitLine = (sit) => sit ? `${BALL}<b>${esc(sit.poss)} ball</b>${sit.at ? ` &middot; ${esc(sit.at)}` : ""}${sit.rz ? ` <span class="rzc">Red zone</span>` : ""}` : "";
   let sbNext = 0;
   async function scoreStrip() {
     if (document.hidden || Date.now() < sbNext) return;
@@ -2168,7 +2182,8 @@ window.LL_BOOT = function () {
         (((S.gameInfo || {}).venue || {}).fullName ? esc(S.gameInfo.venue.fullName) : ""),
         `<div class="gm-score ${G.state}"><div class="gm-side">${tm(G.away)}<b>${pre ? "" : esc(G.as)}</b></div>
           <div class="gm-mid">${G.state === "in" ? `<span class="lt-dot"></span>` : ""}${esc(pre ? kickTime(G.date) : G.detail)}</div>
-          <div class="gm-side h"><b>${pre ? "" : esc(G.hs)}</b>${tm(G.home)}</div></div>`);
+          <div class="gm-side h"><b>${pre ? "" : esc(G.hs)}</b>${tm(G.home)}</div>
+          ${G.state === "in" ? `<div class="gm-sit" data-sit="${esc(G.id)}">${sitLine((() => { const e = SB_EVENTS.find((x) => String(x.id) === String(G.id)); return e ? sbGame(e).sit : null; })())}</div>` : ""}</div>`);
       $("gm").innerHTML = `<div id="gm-in">
         <section><div class="head"><div><h2>Our picks</h2></div>${ps.length ? `<span class="mono muted">${ps.length}</span>` : ""}</div>
           ${ps.length ? picksBlock(ps, false) : `<div class="empty">No Line Ledger picks on this game.</div>`}</section>
