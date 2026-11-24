@@ -644,7 +644,7 @@ window.LL_BOOT = function () {
     document.querySelectorAll("[data-livegame]").forEach((el) => { const [a, h] = el.dataset.livegame.split("@"); el.innerHTML = liveScore(a, h); });
   }
   setTimeout(liveTrack, 800);
-  setInterval(liveTrack, 30000);
+  setInterval(liveTrack, 15000);                                          // stats every 15s while a pick is live
   document.addEventListener("visibilitychange", () => { if (!document.hidden) liveTrack(); });
   const afterDraw = () => { reveal(); countdowns(); filterCount(); };
   document.addEventListener("click", async (e) => {
@@ -2121,12 +2121,12 @@ window.LL_BOOT = function () {
       if (res.ok) SB_EVENTS = (await res.json()).events || [];
     } catch (e) { /* offline: keep the last one */ }
     const live = SB_EVENTS.some((e) => ((e.status || {}).type || {}).state === "in");
-    sbNext = Date.now() + (live ? 25e3 : 5 * 60e3);                         // every 30s while a game is on
+    sbNext = Date.now() + (live ? 8e3 : 5 * 60e3);                          // score and clock every 10s while a game is on
     paintStrip();
   }
   if (page !== "landing" && (SPORT.markets || []).length) {
     const w = document.querySelector(".board .wrap");
-    if (w) { w.insertAdjacentHTML("afterbegin", `<nav class="sbar" id="sbar" aria-label="Today's games" hidden></nav>`); scoreStrip(); setInterval(scoreStrip, 30000);
+    if (w) { w.insertAdjacentHTML("afterbegin", `<nav class="sbar" id="sbar" aria-label="Today's games" hidden></nav>`); scoreStrip(); setInterval(scoreStrip, 10000);
       document.addEventListener("visibilitychange", () => { if (!document.hidden) { sbNext = 0; scoreStrip(); } }); }
   }
 
@@ -2191,7 +2191,7 @@ window.LL_BOOT = function () {
       if (G && G.state === "in") liveTrack();
     }
     redraw(); load();
-    setInterval(() => { if (G && G.state === "in") load(); }, 30000);
+    setInterval(() => { if (G && G.state === "in") load(); }, 15000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden && G && G.state !== "post") load(); });
   }
   const PAGES = { landing, home, mybets: myBetsPage, game: gamePage, tools: toolsPage, open: openPage, results: resultsPage, clv: clvPage, method, soon: soonPage, player: playerPage, parlays: parlaysPage, market: () => marketPage(pageMarket) };
