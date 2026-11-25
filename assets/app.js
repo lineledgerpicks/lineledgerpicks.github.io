@@ -377,8 +377,8 @@ window.LL_BOOT = function () {
     const fb = e.target.closest("button[data-f]");
     if (fb) { const k = fb.dataset.f; if (k === "clear") state.f.clear(); else state.f.has(k) ? state.f.delete(k) : state.f.add(k);
       document.querySelectorAll(".fchips").forEach((el) => { el.outerHTML = filterChips(); }); redraw(false); return; }
-    const m = e.target.closest("button[data-market]");
-    if (m) { state.market = m.dataset.market; document.querySelectorAll("button[data-market]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.market === state.market)));
+    const m = e.target.closest("button[data-market], tr.sh-go[data-market]");
+    if (m) { if (m.tagName === "TR") window.scrollTo(0, 0); state.market = m.dataset.market; document.querySelectorAll("button[data-market]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.market === state.market)));
       const bar = m.closest(".pbar"); if (bar && m.scrollIntoView) m.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
       redraw(false); return; }
     const j = e.target.closest(".jump a");
@@ -1200,6 +1200,21 @@ window.LL_BOOT = function () {
       ${rows.length > SHOW ? `<details class="wk-more"><summary>Show all ${rows.length} ${label}</summary><div class="wkrows">${rows.slice(SHOW).map(render).join("")}</div></details>` : ""}`
       : `<div class="empty">No graded ${PERIOD.toLowerCase()}s yet.</div>`;
 
+    // the record split by where sharp money stood on each pick (its label at the close)
+    const SH = [["Sharp agrees", "agrees", "Agrees"], ["Sharp against", "against", "Against"], ["Sharp neutral", "neutral", "Neutral"], ["No sharp line", "noline", "No line"]];
+    const shRow = (P, label) => (P.record || []).find((r) => r.label === label);
+    const hasSharp = (k) => SH.some(([l]) => { const r = shRow(MKT(k), l); return r && (r.W + r.L + (r.P || 0)); });
+    const shCell = (r) => !r || !(r.W + r.L + (r.P || 0)) ? `<span class="muted">&ndash;</span>`
+      : `<b>${wl(r)}</b><b class="${tone(r.sized)}">${num(r.sized || 0, 1, true)}u</b><small>${pct(r.win, false)} won</small>`;
+    function sharpCards(k) {
+      const P = MKT(k);
+      if (!hasSharp(k)) return "";
+      return `<section><div class="head"><div><div class="eyebrow">Model + sharp money</div><h2>By Sharp label</h2></div></div>
+        <p class="lede">The record split by where sharp money stood on each pick at the close. <a href="method.html">What the labels mean</a></p>
+        <div class="sh-cards">${SH.map(([l, c, short]) => { const r = shRow(P, l);
+          return `<div class="sh-card ${c}"><span class="sh-l">${esc(l)}</span>${shCell(r)}${r && r.clv_ev != null ? `<span class="sh-clv">vs close <b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b></span>` : ""}</div>`; }).join("")}</div></section>`;
+    }
+
     function overview() {
       const prw = {};
       (PR.model || []).filter((x) => x.result).forEach((x) => { (prw[`${x.season}-${x.week}`] ||= []).push(x); });
@@ -1217,8 +1232,14 @@ window.LL_BOOT = function () {
         return `<div class="wkrow"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
           <span class="wr-ms">${ks.map((k) => `<button type="button" class="wr-m" data-market="${k}"><em>${short(k)}</em>${cell(MKT(k).weeks[key])}</button>`).join("")}${pr}</span></div>`; };
       const r = latestRecap();
+      const shKs = withRec.filter(hasSharp);
+      const bySharp = shKs.length ? `<section><div class="head"><div><div class="eyebrow">Model + sharp money</div><h2>By Sharp label</h2></div></div>
+        <p class="lede">Each prop's record split by where sharp money stood on the pick at the close. Tap a prop for the full breakdown.</p>
+        <div class="tablebox"><table class="sh-t"><thead><tr><th>Prop</th>${SH.map(([l, c, short], i) => `<th class="num${i > 1 ? " opt" : ""} sh-h ${c}">${short}</th>`).join("")}</tr></thead>
+        <tbody>${shKs.map((k) => `<tr data-market="${k}" class="sh-go"><td><b>${esc(MKT(k).short || MKT(k).label)}</b>${MKT(k).paper ? ` <span class="chip paper">paper</span>` : ""}</td>${SH.map(([l], i) => `<td class="num${i > 1 ? " opt" : ""}">${shCell(shRow(MKT(k), l))}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>` : "";
       return `${r ? `<section>${recapCard(r)}</section>` : ""}
         <section><div class="head"><div><h2>By prop</h2></div></div><div class="rprops">${byProp || `<div class="empty">No picks yet.</div>`}</div></section>
+        ${bySharp}
         <section><div class="head"><div><h2>Every ${PERIOD.toLowerCase()}</h2></div></div>${more(keysOf(withRec), row, PERIOD.toLowerCase() + "s")}</section>`;
     }
 
@@ -1237,6 +1258,7 @@ window.LL_BOOT = function () {
       const keys = keysOf([k]);
       return `<section class="rhead"><div class="head"><div><div class="eyebrow">${P.paper ? "Paper picks &middot; tracked, not bet" : `The record &middot; since ${esc(P.since || D.since)}`}</div><h2>${esc(P.label)}</h2></div></div>
           ${tote(P.record, P, true)}${unitsChart(P)}</section>
+        ${sharpCards(k)}
         <section id="clv"><div class="head"><div><h2>Closing line value</h2></div></div>
           <p class="lede">Did the pick get a better number than the market's final price? Over time this is the best sign an edge is real. <a href="method.html">What this means</a></p>
           ${clvChart || `<div class="empty">Shows up once enough picks have closed.</div>`}</section>
