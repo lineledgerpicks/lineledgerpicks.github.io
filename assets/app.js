@@ -1098,7 +1098,8 @@ window.LL_BOOT = function () {
     });
     // which tab: the one you picked; else an old #ph- link; else the first with picks in it
     const fromHash = (location.hash.match(/^#ph-(open|live|final)$/) || [])[1];
-    let cur = state.phaseUser && parts[state.phase] ? state.phase : fromHash || PHASES.map(([ph]) => ph).find((ph) => parts[ph].n) || "open";
+    const hp = byId[decodeURIComponent(location.hash.slice(1))], fromPick = hp && hp.season === season && hp.week === week ? hp.phase : null;
+    let cur = state.phaseUser && parts[state.phase] ? state.phase : fromHash || fromPick || PHASES.map(([ph]) => ph).find((ph) => parts[ph].n) || "open";
     state.phase = cur;
     const P = parts[cur];
     const none = state.market !== "all" && state.pcount && !state.pcount[state.market];    // this prop: no picks this week
@@ -1170,7 +1171,9 @@ window.LL_BOOT = function () {
     };
     document.addEventListener("click", (e) => { const b = e.target.closest("[data-ph]"); if (!b) return;
       state.phase = b.dataset.ph; state.phaseUser = true; redraw(false); });
+    if (byId[decodeURIComponent(location.hash.slice(1))]) state.market = "all";   // a link to one pick: show every prop
     redraw(true);
+    revealHash();
   }
 
   // the Open page became part of This week: old links land on its Open section
@@ -1180,9 +1183,11 @@ window.LL_BOOT = function () {
      record, units over time, closing line value, a breakdown, and every week - each week opens to its picks.  The
      old per-prop pages and the closing-line page send their links here. */
   const resultsUrl = (k, extra = "") => `${F.results}?prop=${encodeURIComponent(k)}${extra}`;
-  const pickUrl = (p) => resultsUrl(p.prop, `&season=${p.season}&week=${p.week}#${p.serial}`);
+  const pickUrl = (p) => p.result ? resultsUrl(p.prop, `&season=${p.season}&week=${p.week}#${p.serial}`)
+    : `${href(F.home)}?season=${p.season}&week=${p.week}#${encodeURIComponent(p.serial)}`;
   function resultsPage() {
     const linked = byId[decodeURIComponent(location.hash.slice(1))];
+    if (linked && !linked.result) { location.replace(pickUrl(linked)); return; }   // an older link to a pick not graded yet
     const want = qs.get("prop") || (linked && linked.prop) || store.get("ll-rk");
     const hasPr = (PR.model || []).some((x) => x.locked && x.legs.length);
     state.market = MK.includes(want) || (want === "parlays" && hasPr) ? want : "all";
@@ -1192,7 +1197,9 @@ window.LL_BOOT = function () {
       .map(([k, l]) => `<button type="button" data-market="${k}" aria-pressed="${state.market === k}">${esc(l)}</button>`).join("")}</div>`;
     $("app").innerHTML = `<div class="ctl rctl">${sw()}</div><div id="rbody"></div>`;
     const short = (k) => esc(MKT(k).short || MKT(k).label);
-    const keysOf = (ks) => [...new Set(ks.flatMap((k) => Object.keys(MKT(k).weeks)))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    // Results is the record: only settled picks (graded, or void).  A link to a pick not graded yet goes to This week.
+    const shown = (p) => !!p.result;
+    const keysOf = (ks) => [...new Set(ks.flatMap((k) => MKT(k).picks.filter(shown).map((p) => `${p.season}-${p.week}`)))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
     const cell = (r) => !r || !(r.W + r.L + (r.P || 0)) ? `<span class="muted">${r && (r.n || r.pending) ? "in progress" : "&ndash;"}</span>`
       : `<b>${wl(r)}</b><b class="${tone(r.sized)}">${num(r.sized || 0, 1, true)}u</b>`;
     const SHOW = 4;
@@ -1210,11 +1217,11 @@ window.LL_BOOT = function () {
     state.sh = ["agrees", "against", "neutral", "noline"].includes(qs.get("sharp")) ? qs.get("sharp") : null;
     state.shw = "all"; state.shr = "all"; state.shn = 40;
     const shKey = (p) => p.sharp === "no line" ? "noline" : p.sharp;
-    const SHRES = [["all", "All"], ["W", "Won"], ["L", "Lost"], ["P", "Push"], ["open", "Not graded"]];
+    const SHRES = [["all", "All"], ["W", "Won"], ["L", "Lost"], ["P", "Push"]];
     function shList(k) {
       if (!state.sh || !MKT(k)) return "";
       const P = MKT(k), label = (SH.find(([, c]) => c === state.sh) || [])[0] || "";
-      const mine = recordPicks(P).filter((p) => shKey(p) === state.sh && p.result !== "VOID")
+      const mine = recordPicks(P).filter((p) => shKey(p) === state.sh && ["W", "L", "P"].includes(p.result))
         .sort((a, b) => String(b.kick_utc || "").localeCompare(String(a.kick_utc || "")) || (a.serial < b.serial ? 1 : -1));
       const weeks = [...new Set(mine.map((p) => `${p.season}-${p.week}`))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
       if (state.shw !== "all" && !weeks.includes(state.shw)) state.shw = "all";
@@ -1276,7 +1283,7 @@ window.LL_BOOT = function () {
           <span class="rp-c"><b>${a.n ? `${a.W}-${a.L}${a.P ? "-" + a.P : ""}` : "0-0"}</b><small>record</small></span><span class="rp-c"><b class="${tone(a.units)}">${a.n ? num(a.units, 1, true) + "u" : "&ndash;"}</b><small>units</small></span>
           <span class="rp-c opt"><b class="${tone(a.roi)}">${a.n ? pct(a.roi) : "&ndash;"}</b><small>ROI</small></span><span class="wr-go" aria-hidden="true">&rsaquo;</span></button>`; })() : "");
       const row = (key) => { const [season, w] = key.split("-"), px = prw[key] || [];
-        const ks = withRec.filter((k) => { const r = MKT(k).weeks[key]; return r && (r.n || r.pending); });
+        const ks = withRec.filter((k) => { const r = MKT(k).weeks[key]; return r && r.n; });
         const pr = px.length ? `<span class="wr-m"><em>Parlays</em><b>${px.filter((x) => x.result === "W").length}-${px.filter((x) => x.result === "L").length}</b></span>` : "";
         return `<div class="wkrow"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
           <span class="wr-ms">${ks.map((k) => `<button type="button" class="wr-m" data-market="${k}"><em>${short(k)}</em>${cell(MKT(k).weeks[key])}</button>`).join("")}${pr}</span></div>`; };
@@ -1300,7 +1307,7 @@ window.LL_BOOT = function () {
       const best = g.slice().sort((a, b) => b.clv_ev - a.clv_ev);
       const mini = (p) => `<a class="mini" href="#${p.serial}" data-goto="${p.serial}"><span><b>${esc(nm(p))}</b> ${bet(p)} <span class="muted">${odds(p.price)} &middot; ${PERIOD.toLowerCase()} ${p.week}</span></span><span class="mono ${tone(p.clv_ev)}">${pct(p.clv_ev)}</span></a>`;
       const wk = (key) => { const [season, w] = key.split("-").map(Number);
-        const ps = P.picks.filter((p) => p.season === season && p.week === w).sort(byKick);
+        const ps = P.picks.filter((p) => p.season === season && p.week === w && shown(p)).sort(byKick);
         return `<details class="rweek" data-key="${key}"><summary class="wkrow"><span class="wr-w"><b>${PERIOD} ${w}</b><small>${season}</small></span>
           <span class="wr-ms"><span class="wr-m"><em>${ps.length} pick${ps.length === 1 ? "" : "s"}</em>${cell(P.weeks[key])}</span>${P.weeks[key] && P.weeks[key].clv_ev != null ? `<span class="wr-m opt"><em>vs close</em><b class="${tone(P.weeks[key].clv_ev)}">${pct(P.weeks[key].clv_ev)}</b></span>` : ""}</span>
           <span class="wr-go" aria-hidden="true">&rsaquo;</span></summary><div class="rw-picks" data-fill="${key}"></div></details>`; };
@@ -1351,7 +1358,7 @@ window.LL_BOOT = function () {
 
     const fill = (det) => { const slot = det.querySelector(".rw-picks");
       if (slot.dataset.done) return; const [season, w] = det.dataset.key.split("-").map(Number);
-      const ps = MKT(state.market).picks.filter((p) => p.season === season && p.week === w).sort(byKick);
+      const ps = MKT(state.market).picks.filter((p) => p.season === season && p.week === w && shown(p)).sort(byKick);
       slot.innerHTML = picksBlock(ps); slot.dataset.done = "1"; afterDraw(); };
     const open = (serial) => { const p = byId[serial]; if (!p) return;
       const det = document.querySelector(`.rweek[data-key="${p.season}-${p.week}"]`); if (!det) return;
