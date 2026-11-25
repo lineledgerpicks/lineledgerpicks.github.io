@@ -2031,3 +2031,21 @@ button.sh-card[aria-pressed="true"] .sh-l i { transform: rotate(90deg); }
 .sh-sum { display: flex; flex-wrap: wrap; gap: 6px 20px; font: 500 13.5px/1.2 var(--body); color: var(--muted); }
 .sh-sum b { font: 700 16px/1 var(--mono); color: var(--ink, inherit); margin-right: 4px; }
 .sh-more { justify-self: center; padding: 10px 18px; border-radius: 999px; border: 1px dashed var(--rule); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
+
+/* This week: the slim header (the week + the top pick in one line) */
+.board.slim .wrap { padding-block: 14px 16px; gap: 10px; }
+.hero-slim { display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
+.hero-slim h1 { margin: 0; color: #fff; font-size: clamp(30px, 4vw, 42px); line-height: 1; text-transform: uppercase; }
+.hero-slim h1 em { font-style: normal; color: var(--board-text); }
+.board.slim + main { padding-top: 20px; }
+.feat-slim { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; min-width: 0; padding: 9px 14px; border-radius: 12px;
+  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12); border-left: 3px solid var(--c1, var(--accent));
+  color: #e6ebf4; text-decoration: none; font-size: 13.5px; transition: border-color .15s ease, background .15s ease; }
+.feat-slim:hover { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .25); }
+.fs-k { font: 700 11px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.fs-n { font-weight: 700; color: #fff; }
+.fs-b small { color: #aeb9cc; }
+.fs-s { color: #aeb9cc; } .fs-s b { color: #fff; }
+.feat-slim > i { font-style: normal; font-size: 18px; color: #aeb9cc; margin-left: auto; }
+@media (max-width: 680px) { .feat-slim { width: 100%; gap: 4px 10px; position: relative; padding-right: 30px; } .fs-s { width: 100%; }
+  .feat-slim > i { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); } }

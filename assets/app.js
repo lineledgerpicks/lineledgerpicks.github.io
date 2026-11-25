@@ -3,6 +3,21 @@
    market is a data change, not a code change. */
 window.LL_BOOT = function () {
   const D = window.DATA;
+  // members: /api/members.js adds this week's open picks in full (the public copy has sealed stubs) and the parlays
+  // unsealed - everything else is the public data.js, so the members' download stays small
+  const MP = window.MEMBER_PATCH;
+  if (MP && D && D.props) {
+    Object.entries(MP.picks || {}).forEach(([k, list]) => {
+      const P = D.props[k];
+      if (!P) return;
+      const full = Object.fromEntries(list.map((p) => [p.serial, p]));
+      P.picks = P.picks.map((p) => full[p.serial] || p);
+      const have = new Set(P.picks.map((p) => p.serial));
+      list.forEach((p) => { if (!have.has(p.serial)) P.picks.push(p); });
+    });
+    if (MP.parlays) D.parlays = MP.parlays;
+    delete D.sealed;
+  }
   // sealed picks: open picks members see first.  They stay out of every list and record, and show as seals in This
   // week's Open section until kickoff, when the next publish reveals them (site.public_view)
   const ck = (n) => (String(document.cookie || "").match(new RegExp(`(?:^|; )${n}=([^;]*)`)) || [])[1];
@@ -985,6 +1000,26 @@ window.LL_BOOT = function () {
       <div class="fc-f">${betButton(p, true) || "<span>Picked by the numbers, not by hand</span>"}<a href="${linkTo(p).replace(/^.*\//, "")}">Full ticket &rarr;</a></div></aside>`;
   }
 
+  // This week's header: the featured pick as one slim line (tap it: the ticket opens in the list below)
+  function featuredSlim() {
+    const p = featuredPick();
+    if (!p) return "";
+    const P = MKT(p.prop);
+    return `<a class="feat-slim" href="#${esc(p.serial)}" data-feat="${esc(p.serial)}" style="${band(p)}" title="The biggest edge on the board${p.sharp === "agrees" ? ", and sharp money agrees" : ""}">
+      <span class="fs-k">&#9733; ${p.free ? "Free pick" : "Top edge"}</span><b class="fs-n">${esc(nm(p))}</b>
+      <span class="fs-b">${bet(p)} <span class="mono">${odds(p.price)}</span> <small>${esc(abbr(p.book))} &middot; ${esc(P.short || P.label)}</small></span>
+      <span class="fs-s">EV <b>${pct(p.ev)}</b> &middot; ${pct(p.win, false)} win${p.sharp === "agrees" ? ` &middot; <span class="fc-sharp">sharp &#10003;</span>` : ""}</span>
+      <i aria-hidden="true">&rsaquo;</i></a>`;
+  }
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-feat]");
+    if (!a) return;
+    e.preventDefault();
+    if (state.phase !== "open" || state.market !== "all") { state.phase = "open"; state.phaseUser = true; state.market = "all"; redraw(true); }
+    history.replaceState(null, "", `#${a.dataset.feat}`);
+    revealHash();
+  });
+
   /* ------------------------------------------------------------------ weekly recap: once every pick of a period is graded */
   const periodKeys = () => [...new Set(allPicks.map((p) => `${p.season}-${p.week}`))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   const picksOf = (key) => allPicks.filter((p) => `${p.season}-${p.week}` === key);
@@ -1136,10 +1171,6 @@ window.LL_BOOT = function () {
   });
 
   function home() {
-    const wk = allPicks.filter((p) => p.season === D.season && p.week === D.week), sl = sealedOpen().filter((p) => p.season === D.season && p.week === D.week);
-    const nOf = (ph) => wk.filter((p) => p.phase === ph).length;
-    const chips = MK.filter((k) => ((MKT(k).record || [])[0] || {}).n).map((k) => { const P = MKT(k), r = (P.record || [])[0] || {};
-      return `<a class="rchip" href="${resultsUrl(k)}"><em>${esc(P.short || P.label)}</em><b>${wl(r)}</b><b class="${tone(r.sized)}">${r.sized != null ? num(r.sized, 1, true) + "u" : ""}</b></a>`; }).join("");
     if (state.week == null || state.week === "all") state.week = D.week;
     const past = state.season !== D.season || state.week !== D.week;          // opened from Results: an earlier week
     if (past) {
@@ -1149,9 +1180,10 @@ window.LL_BOOT = function () {
         `${done ? "Final" : "In progress"} &middot; ${pw.length} pick${pw.length === 1 ? "" : "s"} &middot; <a href="${F.results}">every ${PERIOD.toLowerCase()}</a>`,
         `<div class="rchips">${MK.map((k) => { const r = periodRec(MKT(k), state.season, state.week); return r && r.n ? `<span class="rchip"><em>${esc(MKT(k).short || MKT(k).label)}</em><b>${wl(r)}</b><b class="${tone(r.sized)}">${num(r.sized || 0, 1, true)}u</b></span>` : ""; }).join("")}</div>`);
     } else
-    hero(`${esc(SPORT.name)} player props &middot; ${D.season}`, `${PERIOD} <em>${D.week}</em>`,
-      `${nOf("open") + sl.length} open${sl.length ? ` (${sl.length} sealed)` : ""} &middot; ${nOf("live")} live &middot; ${nOf("final")} graded`,
-      `<div class="rchips">${chips}<a class="rchip more" href="${F.results}">Full record &rarr;</a></div>`, featured());
+    {                                                             // a slim header: the week, and the top pick in one line
+      $("hero").innerHTML = `<div class="hero-slim"><h1>${PERIOD} <em>${D.week}</em></h1>${featuredSlim()}</div>`;
+      const b = document.querySelector(".board"); if (b && b.classList) b.classList.add("slim");
+    }
     // one story: the record (hero), last week's recap, then this week's picks (the moving strip was a third copy of
     // the open picks; marquee() stays for any page that wants it)
     $("app").innerHTML = `

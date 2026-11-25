@@ -433,46 +433,58 @@ async function dm(env, userId, content) {
   return m.status;
 }
 
-async function hitAlerts(env) {
-  if (!env.LINKS || !env.DISCORD_BOT_TOKEN) return { skipped: "not set up" };
-  const users = (await env.LINKS.get("alert-users", "json")) || [];
-  if (!users.length) return { skipped: "no one has alerts on" };
-  const res = await fetch(`${env.ESPN_API || ESPN}scoreboard`, { cache: "no-store" });
-  if (!res.ok) return { skipped: `scoreboard ${res.status}` };
-  const games = ((await res.json()).events || []).map((e) => {
+// o: { dry: true -> no DMs, nothing saved; hours: how long after kickoff a finished game still counts (6);
+//      only: [whop user ids]; log: [] -> a line per step, for /api/hit-check }
+async function hitAlerts(env, o = {}) {
+  const log = o.log || [], say = (x) => log.push(x);
+  if (!env.LINKS || !env.DISCORD_BOT_TOKEN) { say("not set up: no KV or no DISCORD_BOT_TOKEN"); return { skipped: "not set up", log }; }
+  let users = (await env.LINKS.get("alert-users", "json")) || [];
+  say(`${users.length} account(s) have hit alerts on`);
+  if (o.only) users = users.filter((u) => o.only.includes(u));
+  if (!users.length) return { skipped: "no one has alerts on", log };
+  const res = await fetch(`${env.ESPN_API || ESPN}scoreboard`);
+  if (!res.ok) { say(`ESPN scoreboard: HTTP ${res.status}`); return { skipped: `scoreboard ${res.status}`, log }; }
+  const hours = o.hours || 6;
+  const all = ((await res.json()).events || []).map((e) => {
     const c = e.competitions[0], ty = ((c.status || e.status || {}).type) || {};
     const H = c.competitors.find((x) => x.homeAway === "home"), A = c.competitors.find((x) => x.homeAway === "away");
     return { id: e.id, date: e.date, state: ty.state, clock: ty.state === "post" ? "Final" : ty.shortDetail || "", home: tcode(H.team.abbreviation), away: tcode(A.team.abbreviation), hs: H.score, as: A.score };
-  }).filter((g) => g.state === "in" || (g.state === "post" && Date.now() - new Date(g.date) < 6 * 3600e3));
-  if (!games.length) return { skipped: "no game on" };
+  });
+  const games = all.filter((g) => g.state === "in" || (g.state === "post" && Date.now() - new Date(g.date) < hours * 3600e3));
+  say(`ESPN scoreboard: ${all.length} games this week, ${games.length} on now or finished in the last ${hours}h` + (games.length ? ` (${games.map((g) => `${g.away}@${g.home} ${g.clock}`).join(", ")})` : ""));
+  if (!games.length) return { skipped: "no game on", log };
   const gameOf = (p) => games.find((g) => [g.home, g.away].includes(p.team) && [g.home, g.away].includes(p.opp)
     && (!p.kick_utc || Math.abs(new Date(p.kick_utc) - new Date(g.date)) < 12 * 3600e3));
-  const boxes = {}, out = { sent: 0, users: users.length };
+  const boxes = {}, out = { sent: 0, users: users.length, log };
   for (const u of users) {
     const rec = await env.LINKS.get(`b:${u}`, "json");
-    if (!rec || !rec.a) continue;
-    const sent = new Set(rec.sent || []);
-    const todo = Object.values(rec.s || {}).filter((p) => !sent.has(p.serial) && STAT[p.prop] && gameOf(p));
-    if (!todo.length) continue;
+    if (!rec || !rec.a) { say(`account ${u.slice(0, 6)}...: ${rec ? "alerts switched off" : "no saved bets"}`); continue; }
+    const sent = new Set(rec.sent || []), bets = Object.values(rec.s || {});
+    say(`account ${u.slice(0, 6)}...: ${bets.length} marked bet(s), ${sent.size} already alerted`);
+    const todo = bets.filter((p) => !sent.has(p.serial) && STAT[p.prop] && gameOf(p));
+    if (!todo.length) { say("  none of them in a game on now"); continue; }
     const who = (await env.LINKS.get(`w:${u}`, "json").catch(() => null)) || (await env.LINKS.get(`a:${u}`, "json").catch(() => null));
-    if (!who || !who.d) continue;
+    if (!who || !who.d) { say("  no Discord linked"); continue; }
     let changed = false;
     for (const p of todo) {
       const g = gameOf(p);
       if (!boxes[g.id]) {
-        const r = await fetch(`${env.ESPN_API || ESPN}summary?event=${g.id}`, { cache: "no-store" });
+        const r = await fetch(`${env.ESPN_API || ESPN}summary?event=${g.id}`);
         boxes[g.id] = r.ok ? box(await r.json()) : {};
+        if (!r.ok) say(`  ESPN box score ${g.away}@${g.home}: HTTP ${r.status}`);
       }
       const r = findIn(boxes[g.id], p), v = r ? STAT[p.prop](r) : null;
-      if (v == null) continue;                               // not in the box score yet (or didn't play): no alert
       const over = p.side !== "UNDER";
-      const hit = over ? v > p.line : g.state === "post" && v < p.line;
+      const hit = v != null && (over ? v > p.line : g.state === "post" && v < p.line);
+      say(`  ${p.name} ${p.side} ${p.line} ${p.prop}: ${v == null ? "not found in the box score" : `has ${fmt(v)}`} -> ${hit ? "HIT" : "no alert yet"}`);
       if (!hit) continue;
       const score = `${g.away} ${g.as}-${g.hs} ${g.home}, ${g.clock}`;
       const bet = `${p.name} ${p.bet || `${p.side} ${p.line} ${p.label || p.prop}`}`;
       const msg = over ? `\u2705 **Your bet hit: ${bet}**\n${fmt(v)} ${p.unit || ""} so far \u00b7 ${score}`
                        : `\u2705 **Your bet cashed: ${bet}**\nFinished with ${fmt(v)} ${p.unit || ""} \u00b7 ${score}`;
+      if (o.dry) { say("    (dry run: no DM sent)"); continue; }
       const st = await dm(env, who.d, msg.replace(/ +\u00b7/g, " \u00b7").trim());
+      say(`    DM: HTTP ${st}`);
       if (st === 429) break;                                  // rate limited: the rest go out on the next run
       sent.add(p.serial); changed = true;                     // sent, or Discord said no (DMs off): never retried
       if (st >= 200 && st < 300) out.sent += 1; else console.error("hit alert DM failed:", st);
@@ -480,6 +492,23 @@ async function hitAlerts(env) {
     if (changed) { rec.sent = [...sent]; await env.LINKS.put(`b:${u}`, JSON.stringify(rec)); }
   }
   return out;
+}
+
+// the owner's check: what the alert run sees for your own bets, step by step (dry: sends nothing, saves nothing).
+// ?hours=24 looks back at games that finished up to 24 hours after kickoff.
+async function hitCheck(req, env) {
+  const [s, set] = await session(req, env);
+  if (!s || s.lv !== "admin") return send("owner only", "text/plain", set, 403);
+  const hours = Math.min(48, Number(new URL(req.url).searchParams.get("hours")) || 24);
+  const rec = env.LINKS ? await env.LINKS.get(`b:${s.u}`, "json") : null;
+  const list = env.LINKS ? (await env.LINKS.get("alert-users", "json")) || [] : [];
+  const who = env.LINKS ? await env.LINKS.get(`a:${s.u}`, "json") : null;
+  const head = [`your account on the alert list: ${list.includes(s.u) ? "yes" : "NO"}`, `alerts switch saved: ${rec && rec.a ? "on" : "OFF"}`,
+    `Discord linked for alerts: ${who && who.d ? "yes" : "NO"}`, `marked bets saved to your account: ${rec ? Object.keys(rec.s || {}).length : 0}`,
+    `bot token set: ${env.DISCORD_BOT_TOKEN ? "yes" : "NO"}`, ""];
+  let run;
+  try { run = await hitAlerts(env, { dry: true, hours, only: [s.u], log: [] }); } catch (e) { run = { log: [`run failed: ${why(e)}`] }; }
+  return send(head.concat(run.log || []).join("\n") + "\n", "text/plain; charset=utf-8", set);
 }
 
 async function membersData(env, origin) {
@@ -491,8 +520,8 @@ async function membersData(env, origin) {
   return dec.decode(plain);
 }
 
-function send(body, type, setCookies = [], status = 200) {
-  const h = new Headers({ "Content-Type": type, "Cache-Control": "private, no-store" });
+function send(body, type, setCookies = [], status = 200, cache = "private, no-store") {
+  const h = new Headers({ "Content-Type": type, "Cache-Control": cache });
   setCookies.forEach((c) => h.append("Set-Cookie", c));
   return new Response(body, { status, headers: h });
 }
@@ -514,10 +543,14 @@ export default {
         return send(JSON.stringify(s ? { in: true, member: !!s.m, level: s.lv || null, discord: !!s.d, name: s.name, checked_min_ago: Math.round((now() - s.c) / 60), ...(s.err ? { recheck_error: s.err } : {}) } : { in: false, member: false }), "application/json", set);
       }
       if (url.pathname === "/api/mybets") return await myBets(req, env);
+      if (url.pathname === "/api/hit-check") return await hitCheck(req, env);
       if (url.pathname === "/api/members.js") {
         const [s, set] = await session(req, env);
         if (!s || !s.m) return send("/* not a member: public picks only */", "application/javascript", set);
-        return send(`window.DATA = ${await membersData(env, url.origin)};\nwindow.MEMBER = true;\n`, "application/javascript", set);
+        // only what members get beyond data.js (this week's open picks, the parlays); the URL carries the publish
+        // version, so a browser keeps it 5 minutes - moving between pages doesn't download it again
+        return send(`window.MEMBER_PATCH = ${await membersData(env, url.origin)};\nwindow.MEMBER = true;\n`, "application/javascript", set, 200,
+          set.length ? "private, no-store" : "private, max-age=300");
       }
       if (url.pathname === "/members.enc") return new Response("Not found", { status: 404 });   // only via /api/members.js
     } catch (e) {
@@ -526,7 +559,8 @@ export default {
     return env.ASSETS.fetch(req);
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(hitAlerts(env).catch((e) => console.error("hit alerts failed:", why(e))));
+    ctx.waitUntil(hitAlerts(env).then((r) => { if (r.skipped !== "no game on" && r.skipped !== "no one has alerts on") console.log("hit alerts:", (r.log || []).join(" | ")); })
+      .catch((e) => console.error("hit alerts failed:", why(e))));
   },
 };
 export { hitAlerts, myBets, seal };
