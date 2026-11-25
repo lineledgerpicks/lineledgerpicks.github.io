@@ -1206,13 +1206,62 @@ window.LL_BOOT = function () {
     const hasSharp = (k) => SH.some(([l]) => { const r = shRow(MKT(k), l); return r && (r.W + r.L + (r.P || 0)); });
     const shCell = (r) => !r || !(r.W + r.L + (r.P || 0)) ? `<span class="muted">&ndash;</span>`
       : `<b>${wl(r)}</b><b class="${tone(r.sized)}">${num(r.sized || 0, 1, true)}u</b><small>${pct(r.win, false)} won</small>`;
+    // tap a card: the picks behind it, newest first, narrowed by week and result (?sharp=agrees keeps it in the link)
+    state.sh = ["agrees", "against", "neutral", "noline"].includes(qs.get("sharp")) ? qs.get("sharp") : null;
+    state.shw = "all"; state.shr = "all"; state.shn = 40;
+    const shKey = (p) => p.sharp === "no line" ? "noline" : p.sharp;
+    const SHRES = [["all", "All"], ["W", "Won"], ["L", "Lost"], ["P", "Push"], ["open", "Not graded"]];
+    function shList(k) {
+      if (!state.sh || !MKT(k)) return "";
+      const P = MKT(k), label = (SH.find(([, c]) => c === state.sh) || [])[0] || "";
+      const mine = recordPicks(P).filter((p) => shKey(p) === state.sh && p.result !== "VOID")
+        .sort((a, b) => String(b.kick_utc || "").localeCompare(String(a.kick_utc || "")) || (a.serial < b.serial ? 1 : -1));
+      const weeks = [...new Set(mine.map((p) => `${p.season}-${p.week}`))].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+      if (state.shw !== "all" && !weeks.includes(state.shw)) state.shw = "all";
+      const inWeek = mine.filter((p) => state.shw === "all" || `${p.season}-${p.week}` === state.shw);
+      const list = inWeek.filter((p) => state.shr === "all" || (state.shr === "open" ? !p.result : p.result === state.shr));
+      const g = list.filter((p) => ["W", "L", "P"].includes(p.result)), n = (r) => g.filter((p) => p.result === r).length;
+      const u = g.reduce((t, p) => t + (p.pl_u || 0), 0);
+      const chip = (attr, v, l, on, cnt) => `<button type="button" ${attr}="${v}" aria-pressed="${on}">${l}${cnt != null ? `<b>${cnt}</b>` : ""}</button>`;
+      const seasons = new Set(weeks.map((w) => w.split("-")[0]));
+      return `<div class="sh-list"><div class="sh-lh"><div><div class="eyebrow">${esc(P.label)}</div><h3>${esc(label)}</h3></div>
+          <button type="button" class="sh-x" data-sh="${state.sh}" aria-label="Close the list">&times;</button></div>
+        <div class="sh-f"><div class="pbar sh-wk" role="group" aria-label="${PERIOD}">${chip("data-shw", "all", `All ${PERIOD.toLowerCase()}s`, state.shw === "all")}${weeks.map((w) => { const [yr, wk] = w.split("-");
+          return chip("data-shw", w, `${PERIOD} ${wk}${seasons.size > 1 ? ` <small>${yr}</small>` : ""}`, state.shw === w); }).join("")}</div>
+          <div class="pbar sh-res" role="group" aria-label="Result">${SHRES.map(([v, l]) => { const c = inWeek.filter((p) => v === "all" || (v === "open" ? !p.result : p.result === v)).length;
+            return v !== "all" && !c ? "" : chip("data-shr", v, l, state.shr === v, c); }).join("")}</div></div>
+        <div class="sh-sum"><span><b>${list.length}</b> pick${list.length === 1 ? "" : "s"}</span>${g.length ? `<span><b>${n("W")}-${n("L")}${n("P") ? "-" + n("P") : ""}</b> record</span><span><b class="${tone(u)}">${num(u, 2, true)}u</b> units</span><span><b>${(100 * n("W") / Math.max(1, n("W") + n("L"))).toFixed(1)}%</b> won</span>` : ""}</div>
+        ${list.length ? picksBlock(list.slice(0, state.shn), false) + (list.length > state.shn ? `<button type="button" class="sh-more" data-shmore="1">Show ${Math.min(40, list.length - state.shn)} more (${list.length - state.shn} left)</button>` : "")
+          : `<div class="empty">No picks match.</div>`}</div>`;
+    }
+    function paintSh() {
+      const el = $("sh-list");
+      if (!el) return;
+      el.innerHTML = shList(state.market);
+      document.querySelectorAll(".sh-card[data-sh]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.sh === state.sh)));
+      const u = new URL(location.href);
+      if (state.sh) u.searchParams.set("sharp", state.sh); else u.searchParams.delete("sharp");
+      history.replaceState(null, "", u);
+      afterDraw();
+    }
+    document.addEventListener("click", (e) => {
+      const c = e.target.closest("[data-sh]"), w = e.target.closest("[data-shw]"), r = e.target.closest("[data-shr]"), m = e.target.closest("[data-shmore]");
+      if (!c && !w && !r && !m) return;
+      if (c) { state.sh = state.sh === c.dataset.sh ? null : c.dataset.sh; state.shw = "all"; state.shr = "all"; state.shn = 40; }
+      if (w) { state.shw = w.dataset.shw; state.shn = 40; }
+      if (r) { state.shr = r.dataset.shr; state.shn = 40; }
+      if (m) state.shn += 40;
+      paintSh();
+      if (c && state.sh) { const el = $("sh-list"); if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" }); }
+    });
     function sharpCards(k) {
       const P = MKT(k);
       if (!hasSharp(k)) return "";
       return `<section><div class="head"><div><div class="eyebrow">Model + sharp money</div><h2>By Sharp label</h2></div></div>
-        <p class="lede">The record split by where sharp money stood on each pick at the close. <a href="method.html">What the labels mean</a></p>
+        <p class="lede">The record split by where sharp money stood on each pick at the close. Tap one to see its picks. <a href="method.html">What the labels mean</a></p>
         <div class="sh-cards">${SH.map(([l, c, short]) => { const r = shRow(P, l);
-          return `<div class="sh-card ${c}"><span class="sh-l">${esc(l)}</span>${shCell(r)}${r && r.clv_ev != null ? `<span class="sh-clv">vs close <b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b></span>` : ""}</div>`; }).join("")}</div></section>`;
+          return `<button type="button" class="sh-card ${c}" data-sh="${c}" aria-pressed="${state.sh === c}"><span class="sh-l">${esc(l)}<i aria-hidden="true">&rsaquo;</i></span>${shCell(r)}${r && r.clv_ev != null ? `<span class="sh-clv">vs close <b class="${tone(r.clv_ev)}">${pct(r.clv_ev)}</b></span>` : ""}</button>`; }).join("")}</div>
+        <div id="sh-list" class="sh-wrap">${shList(k)}</div></section>`;
     }
 
     function overview() {
@@ -1312,12 +1361,14 @@ window.LL_BOOT = function () {
       document.querySelectorAll(".rbar button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.market === state.market)));
       const u = new URL(location.href); u.searchParams.delete("season"); u.searchParams.delete("week");
       if (state.market === "all") u.searchParams.delete("prop"); else u.searchParams.set("prop", state.market);
+      if (state.sh && MK.includes(state.market)) u.searchParams.set("sharp", state.sh); else u.searchParams.delete("sharp");
       if (linked && linked.prop !== state.market) u.hash = "";
       history.replaceState(null, "", u);
       $("rbody").innerHTML = state.market === "all" ? overview() : state.market === "parlays" ? parlayHistory() : one(state.market);
       afterDraw(); countUp();
       if (linked && linked.prop === state.market) open(linked.serial);
       else if (location.hash === "#clv") { const c = $("clv"); if (c) c.scrollIntoView(); }
+      else if (state.sh && qs.get("sharp") && !redraw.shDone) { redraw.shDone = true; const el = $("sh-list"); if (el && el.scrollIntoView) el.scrollIntoView({ block: "start" }); }
     };
     document.addEventListener("toggle", (e) => { const d = e.target; if (d.classList && d.classList.contains("rweek") && !d.classList.contains("prw") && d.open) fill(d); }, true);
     document.addEventListener("click", (e) => { const a = e.target.closest("[data-goto]"); if (!a) return;

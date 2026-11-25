@@ -2011,3 +2011,23 @@ a.rp-row.pr-link { text-decoration: none; }
 .sh-t tr.sh-go { cursor: pointer; } .sh-t tr.sh-go:hover td { background: var(--soft); }
 .sh-h.agrees { color: var(--up); } .sh-h.against { color: var(--down); }
 @media (max-width: 680px) { .sh-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Results: tap a Sharp card for its picks */
+button.sh-card { text-align: left; color: inherit; cursor: pointer; transition: border-color .15s ease, transform .15s ease; }
+button.sh-card:hover { border-color: var(--accent); }
+button.sh-card:active { transform: scale(.98); }
+button.sh-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.sh-l { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.sh-l i { font-style: normal; font-size: 18px; line-height: 1; transition: transform .15s ease; }
+button.sh-card[aria-pressed="true"] .sh-l i { transform: rotate(90deg); }
+.sh-wrap:empty { display: none; }
+.sh-list { display: grid; gap: 14px; margin-top: 16px; padding: 16px; border-radius: 16px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 4%, transparent); scroll-margin-top: 80px; }
+.sh-lh { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.sh-lh h3 { margin: 2px 0 0; font: 800 24px/1 var(--display); text-transform: uppercase; }
+.sh-x { border: 1px solid var(--rule); background: var(--ticket); color: inherit; width: 34px; height: 34px; border-radius: 50%; font-size: 20px; line-height: 1; cursor: pointer; }
+.sh-f { display: grid; gap: 8px; min-width: 0; }
+.sh-f .pbar { margin: 0; }
+.sh-f button small { opacity: .6; margin-left: 3px; }
+.sh-sum { display: flex; flex-wrap: wrap; gap: 6px 20px; font: 500 13.5px/1.2 var(--body); color: var(--muted); }
+.sh-sum b { font: 700 16px/1 var(--mono); color: var(--ink, inherit); margin-right: 4px; }
+.sh-more { justify-self: center; padding: 10px 18px; border-radius: 999px; border: 1px dashed var(--rule); background: transparent; color: inherit; font-weight: 700; cursor: pointer; }
