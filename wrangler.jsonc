@@ -23,6 +23,5 @@
     "DISCORD_GUILD_ID": "1421193448551219352",
     "DISCORD_ROLE_ID": "1571773177158307900"
   },
-  "kv_namespaces": [{ "binding": "LINKS", "id": "dbea0ee9d5d1492f91431d0f3dd2f933" }],
-  "triggers": { "crons": ["*/2 * * * *"] }
+  "kv_namespaces": [{ "binding": "LINKS", "id": "dbea0ee9d5d1492f91431d0f3dd2f933" }]
 }

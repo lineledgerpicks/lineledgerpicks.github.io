@@ -48,7 +48,7 @@ window.LL_BOOT = function () {
       <div class="acct-pop">${items}</div></details>`;
   }
   { const q = new URLSearchParams(location.search).get("discord");
-    if (q && q !== "cancelled" && q !== "not-member" && q !== "linked" && typeof alert === "function") setTimeout(() => alert(q === "owner"
+    if (q && q !== "cancelled" && q !== "not-member" && typeof alert === "function") setTimeout(() => alert(q === "owner"
       ? "You're signed in as the Whop owner. The Discord Member role is only for customers, so nothing was changed in Discord."
       : "Discord couldn't be connected. Please try again, or message us on X."), 300); }
   const sealedOpen = () => SEALED.filter((p) => !p.kick_utc || new Date(p.kick_utc) > Date.now());
@@ -137,8 +137,8 @@ window.LL_BOOT = function () {
   const iBet = (p) => !!MYBETS[p.serial];
   const setBet = (serial, on) => { if (on) MYBETS[serial] = 1; else delete MYBETS[serial]; store.set("ll-mybets", JSON.stringify(MYBETS));
     store.set("ll-mybets-at", String(Date.now())); pushBets(); };
-  // signed in: My bets also lives on the account (the site worker's /api/mybets), so every device shows the same bets -
-  // and members can get a Discord DM the moment one hits.  The newer copy wins (this device's or the account's).
+  // signed in: My bets also lives on the account (the site worker's /api/mybets), so every device shows the same bets.
+  // The newer copy wins (this device's or the account's).
   const SYNC = SIGNED_IN && !PV && !!D.login_url;
   const mbAt = () => Number(store.get("ll-mybets-at") || 0);
   let MB_SERVER = null, pushT = 0;
@@ -162,25 +162,7 @@ window.LL_BOOT = function () {
       store.set("ll-mybets", JSON.stringify(MYBETS)); store.set("ll-mybets-at", String(j.at));
       paintMyCount(); redraw(false);
     } else if (!same) pushBets();                                         // this device is newer (or the account is empty)
-    if (page === "mybets") paintAlerts();
   }).catch(() => {});
-  // My bets: the Discord hit-alert switch (members with Discord linked)
-  function paintAlerts() {
-    const el = $("mb-alerts"), j = MB_SERVER;
-    if (!el || !j) return;
-    const dc = brand("discord", 18);
-    el.innerHTML = !j.member ? `<div class="mb-al">${dc}<span><b>Hit alerts are for members.</b> Members get a Discord message the moment a bet they marked hits.</span></div>`
-      : !j.discord ? `<div class="mb-al wrap">${dc}<span><b>Get a Discord message when a bet hits.</b> Connect Discord once, then switch it on here.</span><a class="mb-al-b" href="/auth/discord">Connect Discord</a></div>`
-      : `<div class="mb-al">${dc}<span><b>Hit alerts in Discord</b> ${j.alerts ? "A DM the moment one of these bets hits (unders when the game ends)." : "Off. Switch on for a DM the moment one of these bets hits."}</span>
-          <button type="button" class="mb-sw" id="mb-sw" role="switch" aria-checked="${!!j.alerts}"><i></i><span>${j.alerts ? "On" : "Off"}</span></button></div>`;
-  }
-  document.addEventListener("click", (e) => {
-    const b = e.target.closest("#mb-sw");
-    if (!b || !MB_SERVER) return;
-    b.disabled = true;
-    mbPost({ alerts: !MB_SERVER.alerts }).then(([ok, j]) => { if (!ok && j && j.error === "link-discord") MB_SERVER.discord = false; paintAlerts(); })
-      .catch(() => { b.disabled = false; });
-  });
   const markBet = (p) => `<button type="button" class="markbet" data-markbet="${esc(p.serial)}" aria-pressed="${iBet(p)}" title="Mark it after you place it: it shows up in My bets.">${iBet(p) ? "&#10003; Bet" : "Mark as bet"}</button>`;
   const betMark = (p) => page !== "mybets" && iBet(p) ? `<span class="ibet" title="You marked this as bet on the Tools page">&#10003; Bet</span>` : "";
   const linkTo = (p) => new URL(pickUrl(p), location.href).href;           // every pick lives on Results (open to all)
@@ -2191,10 +2173,9 @@ window.LL_BOOT = function () {
         `<div class="tote"><div><b data-mb-live>${live.length}</b><span>live</span></div><div><b>${open.length}</b><span>open</span></div>
           <div><b>${rec}</b><span>record${n("VOID") ? ` &middot; ${n("VOID")} void` : ""}</span></div><div><b class="${tone(u)}">${done.length ? num(u, 2, true) + "u" : "&ndash;"}</b><span>units</span></div></div>`);
       const part = (title, list, grouped, note) => list.length ? `<div class="mb-part"><div class="mb-h"><h2>${title}</h2><span class="mono muted">${list.length}</span>${note || ""}</div>${picksBlock(list, grouped)}</div>` : "";
-      $("mb").innerHTML = (SYNC ? `<div id="mb-alerts"></div>` : "") + (mine.length
+      $("mb").innerHTML = (mine.length
         ? part("Live", live, true) + part("Open", open, true) + part("Settled", done, false)
         : `<div class="empty mb-empty"><p><b>No bets marked yet.</b></p><p>Open any pick on <a href="${href(F.home)}">This ${PERIOD.toLowerCase()}</a> and tap <b>Mark as bet</b>. Your bets collect here: live ones track the game, and settled ones keep your record.</p><p class="muted">${SYNC ? "Marks are saved to your account, so they show on every device you sign in on." : "Marks stay in this browser on this device."}</p></div>`);
-      paintAlerts();
       afterDraw();
     };
     redraw();

@@ -6,9 +6,7 @@
                                                   Redirect link): re-checks access now, then the picks + Connect Discord
      /api/me                                    - who is signed in, and are they a member
      /api/members.js                            - the full picks (members only; replaces the sealed public data)
-     /api/mybets                                - your "Mark as bet" picks, kept on your account (every device), and
-                                                  the switch for Discord DMs when one of them hits (members, opt-in)
-   Every 2 minutes (cron, wrangler.jsonc) during games: hitAlerts() checks ESPN's live box scores for those bets.
+     /api/mybets                                - your "Mark as bet" picks, kept on your account (every device)
    Membership = access to the Whop product WHOP_PRODUCT_ID, checked at sign-in with the member's own token and
    re-checked every 15 minutes with the app's API key.  The members' picks are published encrypted (members.enc,
    AES-GCM); only this worker holds the key.  Secrets (Cloudflare dashboard): SESSION_KEY, MEMBERS_KEY,
@@ -258,6 +256,7 @@ async function discordRole(env, discordId, give) {
 async function discordStart(req, env) {
   const [s, set] = await session(req, env, true);                      // ask Whop now: who is this, really
   if (!s) return redirect(`/auth/login?next=${encodeURIComponent("/auth/discord")}`);
+  if (s.lv === "admin") return redirect("/week?discord=owner", set);
   if (!s.m) return redirect("/week?discord=not-member", set);
   const state = rand(16);
   const p = new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, response_type: "code", redirect_uri: `${env.SITE}/auth/discord/callback`,
@@ -272,8 +271,8 @@ async function discordCallback(req, env) {
   if (url.searchParams.get("error")) return done("cancelled");
   if (!st || st.s !== url.searchParams.get("state")) return done("failed-state");
   const [s] = await session(req, env);
-  const owner = s && s.lv === "admin";                                  // the owner: hit alerts only, no Member role
-  if (!s || (s.lv !== "customer" && !owner)) return done("not-member");
+  if (s && s.lv === "admin") return done("owner");
+  if (!s || s.lv !== "customer") return done("not-member");
   try {
     const form = new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, client_secret: String(env.DISCORD_CLIENT_SECRET || "").trim(),
       grant_type: "authorization_code", code: url.searchParams.get("code"), redirect_uri: `${env.SITE}/auth/discord/callback` });
@@ -283,10 +282,6 @@ async function discordCallback(req, env) {
     const meRes = await fetch(`${env.DISCORD_API || DISCORD}/users/@me`, { headers: { Authorization: `Bearer ${access_token}` } });
     if (!meRes.ok) throw new Error(`discord-me-${meRes.status}`);
     const me = await meRes.json();
-    if (owner) {
-      if (env.LINKS) await env.LINKS.put(`a:${s.u}`, JSON.stringify({ d: me.id, at: now() }));
-      return redirect("/mybets?discord=linked", [cookie(env, "ll_dstate", "", 0)]);
-    }
     // join the server with the role (201), or - already in it (204) - just give the role
     const join = await fetch(`${env.DISCORD_API || DISCORD}/guilds/${env.DISCORD_GUILD_ID}/members/${me.id}`, { method: "PUT",
       headers: { Authorization: `Bot ${String(env.DISCORD_BOT_TOKEN || "").trim()}`, "Content-Type": "application/json" },
@@ -339,25 +334,9 @@ async function whopWebhook(req, env) {
 }
 
 // ---------------------------------------------------------------------------------------------- My bets
-// A signed-in visitor's "Mark as bet" picks live in KV (b:<whop user>), so every device shows the same My bets.  Each
-// mark carries what's needed to follow it (player, teams, prop, line, side), so the cron never loads the site's data.
-// Members with Discord linked can switch on a DM the moment a marked bet hits ("alert-users" lists who has).
+// A signed-in visitor's "Mark as bet" picks live in KV (b:<whop user>), so every device shows the same My bets.
 const PICK_FIELDS = ["serial", "name", "team", "opp", "prop", "label", "bet", "unit", "line", "side", "kick_utc"];
 const MAX_BETS = 300;
-
-async function discordOf(env, s) {                         // the Discord account for alerts: a member's link, or the owner's
-  if (!env.LINKS) return null;
-  const w = s.lv === "customer" ? await env.LINKS.get(`w:${s.u}`, "json").catch(() => null) : null;
-  if (w && w.d) return w.d;
-  const a = s.lv === "admin" ? await env.LINKS.get(`a:${s.u}`, "json").catch(() => null) : null;
-  return a && a.d ? a.d : null;
-}
-
-async function setAlertUser(env, u, on) {
-  const list = (await env.LINKS.get("alert-users", "json")) || [];
-  const next = on ? [...new Set([...list, u])] : list.filter((x) => x !== u);
-  if (next.length !== list.length) await env.LINKS.put("alert-users", JSON.stringify(next));
-}
 
 async function myBets(req, env) {
   const [s, set] = await session(req, env);
@@ -365,8 +344,7 @@ async function myBets(req, env) {
   if (!s) return json({ in: false }, 401);
   if (!env.LINKS) return json({ in: true, sync: false });
   const key = `b:${s.u}`;
-  const cur = (await env.LINKS.get(key, "json")) || { s: {}, a: false, at: 0, sent: [] };
-  const discord = s.m ? await discordOf(env, s) : null;
+  const cur = (await env.LINKS.get(key, "json")) || { s: {}, at: 0 };
   if (req.method === "POST") {
     let body = {};
     try { body = await req.json(); } catch (e) { return json({ error: "bad-json" }, 400); }
@@ -377,138 +355,11 @@ async function myBets(req, env) {
         cur.s[p.serial] = Object.fromEntries(PICK_FIELDS.filter((k) => p[k] != null).map((k) => [k, typeof p[k] === "string" ? p[k].slice(0, 80) : p[k]]));
       }
       cur.at = Number(body.at) || Date.now();
-    }
-    if (typeof body.alerts === "boolean") {
-      if (body.alerts && !discord) return json({ error: s.m ? "link-discord" : "members-only" }, 409);
-      cur.a = body.alerts;
-      await setAlertUser(env, s.u, cur.a);
-    }
-    cur.sent = (cur.sent || []).filter((x) => cur.s[x]);
-    await env.LINKS.put(key, JSON.stringify(cur));
-  }
-  return json({ in: true, sync: true, member: !!s.m, discord: !!discord, alerts: !!(cur.a && discord), at: cur.at || 0, serials: Object.keys(cur.s) });
-}
-
-// ---- hit alerts: every 2 minutes, only while a game is on (or just ended) and only if someone has alerts on
-const ESPN = "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/";
-const ESPN_TEAM = { WSH: "WAS", LAR: "LA", JAC: "JAX" };
-const tcode = (abbr) => ESPN_TEAM[abbr] || abbr;
-const normName = (x) => String(x || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/[^a-z]/g, "");
-const initLast = (x) => { const w = String(x || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "").replace(/\./g, ". ").split(/\s+/).map((y) => y.replace(/[^a-z]/g, "")).filter(Boolean); return w.length > 1 ? w[0][0] + "|" + w[w.length - 1] : ""; };
-const STAT = { passing_yards: (r) => r.pass ? r.pass_yds : null, pass_attempts: (r) => r.pass ? r.pass_att : null, completions: (r) => r.pass ? r.comp : null,
-  pass_tds: (r) => r.pass ? r.pass_td : null, interceptions: (r) => r.pass ? r.ints : null, receptions: (r) => r.rec, receiving_yards: (r) => r.rec_yds,
-  rushing_yards: (r) => r.rush_yds, rush_attempts: (r) => r.rush_att, rush_rec_yards: (r) => r.rush_yds + r.rec_yds, anytime_td: (r) => r.td };
-
-function box(summary) {                                     // the summary's box score -> {team: {name: stats}}
-  const n = (x) => { const v = parseFloat(String(x).replace(/,/g, "")); return isFinite(v) ? v : 0; };
-  const out = {};
-  for (const side of (summary.boxscore || {}).players || []) {
-    const team = tcode(side.team.abbreviation);
-    for (const st of side.statistics || []) for (const a of st.athletes || []) {
-      const v = Object.fromEntries((st.labels || []).map((l, i) => [l, (a.stats || [])[i]]));
-      const t = out[team] = out[team] || {};
-      const r = t[a.athlete.displayName] = t[a.athlete.displayName] || { pass: false, pass_yds: 0, pass_att: 0, comp: 0, pass_td: 0, ints: 0, rec: 0, rec_yds: 0, rush_att: 0, rush_yds: 0, td: 0 };
-      if (st.name === "passing") { const [c, t2] = String(v["C/ATT"] || "0/0").split("/"); Object.assign(r, { pass: true, comp: n(c), pass_att: n(t2), pass_yds: n(v.YDS), pass_td: n(v.TD), ints: n(v.INT) }); }
-      if (st.name === "rushing") { r.rush_att = n(v.CAR); r.rush_yds = n(v.YDS); r.td += n(v.TD); }
-      if (st.name === "receiving") { r.rec = n(v.REC); r.rec_yds = n(v.YDS); r.td += n(v.TD); }
+      delete cur.a; delete cur.sent;                         // (hit alerts were removed)
+      await env.LINKS.put(key, JSON.stringify(cur));
     }
   }
-  return out;
-}
-function findIn(teams, p) {
-  const t = teams[p.team] || {};
-  const full = Object.keys(t).filter((k) => normName(k) === normName(p.name));
-  if (full.length === 1) return t[full[0]];
-  const short = Object.keys(t).filter((k) => initLast(k) === initLast(p.name));
-  return short.length === 1 ? t[short[0]] : null;
-}
-const fmt = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1);
-
-async function dm(env, userId, content) {
-  const H = { Authorization: `Bot ${String(env.DISCORD_BOT_TOKEN || "").trim()}`, "Content-Type": "application/json" };
-  const ch = await fetch(`${env.DISCORD_API || DISCORD}/users/@me/channels`, { method: "POST", headers: H, body: JSON.stringify({ recipient_id: userId }) });
-  if (!ch.ok) return ch.status;
-  const { id } = await ch.json();
-  const m = await fetch(`${env.DISCORD_API || DISCORD}/channels/${id}/messages`, { method: "POST", headers: H, body: JSON.stringify({ content, allowed_mentions: { parse: [] } }) });
-  return m.status;
-}
-
-// o: { dry: true -> no DMs, nothing saved; hours: how long after kickoff a finished game still counts (6);
-//      only: [whop user ids]; log: [] -> a line per step, for /api/hit-check }
-async function hitAlerts(env, o = {}) {
-  const log = o.log || [], say = (x) => log.push(x);
-  if (!env.LINKS || !env.DISCORD_BOT_TOKEN) { say("not set up: no KV or no DISCORD_BOT_TOKEN"); return { skipped: "not set up", log }; }
-  let users = (await env.LINKS.get("alert-users", "json")) || [];
-  say(`${users.length} account(s) have hit alerts on`);
-  if (o.only) users = users.filter((u) => o.only.includes(u));
-  if (!users.length) return { skipped: "no one has alerts on", log };
-  const res = await fetch(`${env.ESPN_API || ESPN}scoreboard`);
-  if (!res.ok) { say(`ESPN scoreboard: HTTP ${res.status}`); return { skipped: `scoreboard ${res.status}`, log }; }
-  const hours = o.hours || 6;
-  const all = ((await res.json()).events || []).map((e) => {
-    const c = e.competitions[0], ty = ((c.status || e.status || {}).type) || {};
-    const H = c.competitors.find((x) => x.homeAway === "home"), A = c.competitors.find((x) => x.homeAway === "away");
-    return { id: e.id, date: e.date, state: ty.state, clock: ty.state === "post" ? "Final" : ty.shortDetail || "", home: tcode(H.team.abbreviation), away: tcode(A.team.abbreviation), hs: H.score, as: A.score };
-  });
-  const games = all.filter((g) => g.state === "in" || (g.state === "post" && Date.now() - new Date(g.date) < hours * 3600e3));
-  say(`ESPN scoreboard: ${all.length} games this week, ${games.length} on now or finished in the last ${hours}h` + (games.length ? ` (${games.map((g) => `${g.away}@${g.home} ${g.clock}`).join(", ")})` : ""));
-  if (!games.length) return { skipped: "no game on", log };
-  const gameOf = (p) => games.find((g) => [g.home, g.away].includes(p.team) && [g.home, g.away].includes(p.opp)
-    && (!p.kick_utc || Math.abs(new Date(p.kick_utc) - new Date(g.date)) < 12 * 3600e3));
-  const boxes = {}, out = { sent: 0, users: users.length, log };
-  for (const u of users) {
-    const rec = await env.LINKS.get(`b:${u}`, "json");
-    if (!rec || !rec.a) { say(`account ${u.slice(0, 6)}...: ${rec ? "alerts switched off" : "no saved bets"}`); continue; }
-    const sent = new Set(rec.sent || []), bets = Object.values(rec.s || {});
-    say(`account ${u.slice(0, 6)}...: ${bets.length} marked bet(s), ${sent.size} already alerted`);
-    const todo = bets.filter((p) => !sent.has(p.serial) && STAT[p.prop] && gameOf(p));
-    if (!todo.length) { say("  none of them in a game on now"); continue; }
-    const who = (await env.LINKS.get(`w:${u}`, "json").catch(() => null)) || (await env.LINKS.get(`a:${u}`, "json").catch(() => null));
-    if (!who || !who.d) { say("  no Discord linked"); continue; }
-    let changed = false;
-    for (const p of todo) {
-      const g = gameOf(p);
-      if (!boxes[g.id]) {
-        const r = await fetch(`${env.ESPN_API || ESPN}summary?event=${g.id}`);
-        boxes[g.id] = r.ok ? box(await r.json()) : {};
-        if (!r.ok) say(`  ESPN box score ${g.away}@${g.home}: HTTP ${r.status}`);
-      }
-      const r = findIn(boxes[g.id], p), v = r ? STAT[p.prop](r) : null;
-      const over = p.side !== "UNDER";
-      const hit = v != null && (over ? v > p.line : g.state === "post" && v < p.line);
-      say(`  ${p.name} ${p.side} ${p.line} ${p.prop}: ${v == null ? "not found in the box score" : `has ${fmt(v)}`} -> ${hit ? "HIT" : "no alert yet"}`);
-      if (!hit) continue;
-      const score = `${g.away} ${g.as}-${g.hs} ${g.home}, ${g.clock}`;
-      const bet = `${p.name} ${p.bet || `${p.side} ${p.line} ${p.label || p.prop}`}`;
-      const msg = over ? `\u2705 **Your bet hit: ${bet}**\n${fmt(v)} ${p.unit || ""} so far \u00b7 ${score}`
-                       : `\u2705 **Your bet cashed: ${bet}**\nFinished with ${fmt(v)} ${p.unit || ""} \u00b7 ${score}`;
-      if (o.dry) { say("    (dry run: no DM sent)"); continue; }
-      const st = await dm(env, who.d, msg.replace(/ +\u00b7/g, " \u00b7").trim());
-      say(`    DM: HTTP ${st}`);
-      if (st === 429) break;                                  // rate limited: the rest go out on the next run
-      sent.add(p.serial); changed = true;                     // sent, or Discord said no (DMs off): never retried
-      if (st >= 200 && st < 300) out.sent += 1; else console.error("hit alert DM failed:", st);
-    }
-    if (changed) { rec.sent = [...sent]; await env.LINKS.put(`b:${u}`, JSON.stringify(rec)); }
-  }
-  return out;
-}
-
-// the owner's check: what the alert run sees for your own bets, step by step (dry: sends nothing, saves nothing).
-// ?hours=24 looks back at games that finished up to 24 hours after kickoff.
-async function hitCheck(req, env) {
-  const [s, set] = await session(req, env);
-  if (!s || s.lv !== "admin") return send("owner only", "text/plain", set, 403);
-  const hours = Math.min(48, Number(new URL(req.url).searchParams.get("hours")) || 24);
-  const rec = env.LINKS ? await env.LINKS.get(`b:${s.u}`, "json") : null;
-  const list = env.LINKS ? (await env.LINKS.get("alert-users", "json")) || [] : [];
-  const who = env.LINKS ? await env.LINKS.get(`a:${s.u}`, "json") : null;
-  const head = [`your account on the alert list: ${list.includes(s.u) ? "yes" : "NO"}`, `alerts switch saved: ${rec && rec.a ? "on" : "OFF"}`,
-    `Discord linked for alerts: ${who && who.d ? "yes" : "NO"}`, `marked bets saved to your account: ${rec ? Object.keys(rec.s || {}).length : 0}`,
-    `bot token set: ${env.DISCORD_BOT_TOKEN ? "yes" : "NO"}`, ""];
-  let run;
-  try { run = await hitAlerts(env, { dry: true, hours, only: [s.u], log: [] }); } catch (e) { run = { log: [`run failed: ${why(e)}`] }; }
-  return send(head.concat(run.log || []).join("\n") + "\n", "text/plain; charset=utf-8", set);
+  return json({ in: true, sync: true, member: !!s.m, at: cur.at || 0, serials: Object.keys(cur.s || {}) });
 }
 
 async function membersData(env, origin) {
@@ -543,7 +394,6 @@ export default {
         return send(JSON.stringify(s ? { in: true, member: !!s.m, level: s.lv || null, discord: !!s.d, name: s.name, checked_min_ago: Math.round((now() - s.c) / 60), ...(s.err ? { recheck_error: s.err } : {}) } : { in: false, member: false }), "application/json", set);
       }
       if (url.pathname === "/api/mybets") return await myBets(req, env);
-      if (url.pathname === "/api/hit-check") return await hitCheck(req, env);
       if (url.pathname === "/api/members.js") {
         const [s, set] = await session(req, env);
         if (!s || !s.m) return send("/* not a member: public picks only */", "application/javascript", set);
@@ -558,9 +408,5 @@ export default {
     }
     return env.ASSETS.fetch(req);
   },
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(hitAlerts(env).then((r) => { if (r.skipped !== "no game on" && r.skipped !== "no one has alerts on") console.log("hit alerts:", (r.log || []).join(" | ")); })
-      .catch((e) => console.error("hit alerts failed:", why(e))));
-  },
 };
-export { hitAlerts, myBets, seal };
+export { myBets, seal };

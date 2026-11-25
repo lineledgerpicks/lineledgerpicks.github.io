@@ -1976,18 +1976,6 @@ a.rp-row.pr-link { text-decoration: none; }
   .gm-plays li { grid-template-columns: auto minmax(0, 1fr) auto; } .gm-plays .gm-q { grid-column: 1 / -1; }
 }
 
-/* My bets: the Discord hit-alert switch */
-.mb-al { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 14px; background: var(--ticket); border: 1px solid var(--rule); font-size: 14px; line-height: 1.4; }
-.mb-al > svg { flex: none; color: #5865f2; }
-.mb-al > span { flex: 1; min-width: 0; } .mb-al b { margin-right: 4px; }
-.mb-al-b { flex: none; padding: 8px 14px; border-radius: 999px; background: #5865f2; color: #fff; font-weight: 700; font-size: 13px; text-decoration: none; }
-.mb-sw { flex: none; display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; border: 1px solid var(--rule);
-  background: var(--soft); color: var(--ink, inherit); font: 700 13px/1 var(--body); cursor: pointer; }
-.mb-sw i { width: 34px; height: 20px; border-radius: 999px; background: var(--rule); position: relative; transition: background .15s ease; }
-.mb-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s ease; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
-.mb-sw[aria-checked="true"] i { background: var(--up); }
-.mb-sw[aria-checked="true"] i::after { transform: translateX(14px); }
-@media (max-width: 520px) { .mb-al.wrap { flex-wrap: wrap; } .mb-al.wrap > span { flex-basis: calc(100% - 40px); } .mb-al > span b { display: block; } }
 
 /* who has the ball, and the down */
 .ball { display: inline-block; vertical-align: middle; margin: 0 3px; flex: none; }
